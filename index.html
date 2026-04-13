@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fantasy Baseball Pitcher Tool</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #f5f5f4;
+    --color-background-tertiary: #eeece8;
+    --color-background-info: #e6f1fb;
+    --color-text-primary: #1a1a18;
+    --color-text-secondary: #6b6b66;
+    --color-text-tertiary: #9e9e98;
+    --color-text-info: #185fa5;
+    --color-border-tertiary: rgba(0,0,0,0.12);
+    --color-border-secondary: rgba(0,0,0,0.22);
+    --color-border-primary: rgba(0,0,0,0.35);
+    --color-border-info: #378add;
+    --border-radius-md: 8px;
+    --border-radius-lg: 12px;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-background-primary: #1e1e1c;
+      --color-background-secondary: #2a2a28;
+      --color-background-tertiary: #333331;
+      --color-background-info: #0c2d4a;
+      --color-text-primary: #f0ede8;
+      --color-text-secondary: #a8a89e;
+      --color-text-tertiary: #6e6e68;
+      --color-text-info: #85b7eb;
+      --color-border-tertiary: rgba(255,255,255,0.1);
+      --color-border-secondary: rgba(255,255,255,0.2);
+      --color-border-primary: rgba(255,255,255,0.32);
+      --color-border-info: #378add;
+    }
+    .has-start { background: #0a2e22 !important; color: #5dcaa5 !important; }
+    .status-icon.roster { background: #1a3a12 !important; color: #9fd47e !important; }
+    .status-icon.available { background: #0c2d4a !important; color: #85b7eb !important; }
+  }
+  body { font-family: var(--font-sans); font-size: 14px; color: var(--color-text-primary); background: var(--color-background-tertiary); min-height: 100vh; padding: 1.5rem; }
+  .app-container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 1.5rem; }
+  .tab-bar { display: flex; gap: 8px; margin-bottom: 1.5rem; }
+  .tab { padding: 6px 14px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: transparent; cursor: pointer; font-size: 13px; color: var(--color-text-secondary); font-family: var(--font-sans); }
+  .tab.active { background: var(--color-background-secondary); color: var(--color-text-primary); font-weight: 500; border-color: var(--color-border-primary); }
+  textarea { width: 100%; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; font-size: 13px; font-family: var(--font-sans); background: var(--color-background-primary); color: var(--color-text-primary); resize: vertical; min-height: 80px; }
+  textarea:focus { outline: none; border-color: var(--color-border-primary); }
+  button.action { padding: 6px 14px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: transparent; cursor: pointer; font-size: 13px; color: var(--color-text-primary); font-family: var(--font-sans); }
+  button.action:hover { background: var(--color-background-secondary); }
+  button.primary { background: var(--color-background-info); color: var(--color-text-info); border-color: var(--color-border-info); }
+  .grid { overflow-x: auto; }
+  table.pitcher-grid { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+  table.pitcher-grid th { padding: 6px 4px; text-align: center; border-bottom: 0.5px solid var(--color-border-tertiary); color: var(--color-text-secondary); font-weight: 500; white-space: nowrap; }
+  table.pitcher-grid th.name-col { text-align: left; padding-left: 8px; width: 110px; }
+  table.pitcher-grid th.team-col { width: 40px; }
+  table.pitcher-grid th.status-col { width: 28px; }
+  table.pitcher-grid th.day-col { width: 66px; }
+  table.pitcher-grid td { padding: 5px 4px; border-bottom: 0.5px solid var(--color-border-tertiary); vertical-align: middle; background: var(--color-background-primary); text-align: center; white-space: nowrap; }
+  table.pitcher-grid td.name-td { text-align: left; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  table.pitcher-grid td.team-td { font-size: 11px; color: var(--color-text-secondary); }
+  table.pitcher-grid td.status-td { text-align: center; padding: 0; }
+  table.pitcher-grid tr:hover td { background: var(--color-background-secondary); }
+  .status-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; }
+  .status-icon.roster { background: #EAF3DE; color: #3B6D11; }
+  .status-icon.available { background: #E6F1FB; color: #185FA5; }
+  .status-icon.neither { color: var(--color-text-tertiary); }
+  .start-dot { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; margin: 0 auto; }
+  .has-start { background: #E1F5EE; color: #0F6E56; }
+  .name-toggle { cursor: pointer; font-size: 13px; }
+  .name-toggle:hover { text-decoration: underline; }
+  .summary-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  .summary-card { background: var(--color-background-primary); border-radius: var(--border-radius-md); padding: 10px 12px; border: 0.5px solid var(--color-border-tertiary); }
+  .summary-card .num { font-size: 22px; font-weight: 500; }
+  .summary-card .lbl { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+  .filter-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .filter-btn { padding: 4px 12px; border-radius: 99px; border: 0.5px solid var(--color-border-secondary); background: transparent; cursor: pointer; font-size: 12px; color: var(--color-text-secondary); font-family: var(--font-sans); }
+  .filter-btn.active { border-color: var(--color-border-primary); color: var(--color-text-primary); background: var(--color-background-secondary); font-weight: 500; }
+  .empty-state { padding: 2rem; text-align: center; color: var(--color-text-tertiary); font-size: 13px; background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); }
+  .section { margin-bottom: 1rem; }
+  .edit-panel { background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 1.25rem; transition: border-color 0.15s; }
+  .edit-panel.has-changes { border-color: var(--color-border-info); }
+  .section-label { font-size: 12px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+  .hint { font-size: 11px; color: var(--color-text-tertiary); margin-top: 6px; }
+  .draft-bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; min-height: 28px; }
+  .draft-msg { font-size: 12px; color: var(--color-text-info); }
+  .saved-msg { font-size: 12px; color: var(--color-text-tertiary); }
+  input[type=text] { width: 100%; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 6px 10px; font-size: 13px; font-family: var(--font-sans); background: var(--color-background-primary); color: var(--color-text-primary); margin-bottom: 10px; }
+  input[type=text]:focus { outline: none; border-color: var(--color-border-primary); }
+</style>
+</head>
+<body>
+<div class="app-container">
+  <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:1.5rem;">
+    <h1 style="margin-bottom:0;">Pitcher cross-reference</h1>
+    <span id="sync-status" style="font-size:12px;color:var(--color-text-tertiary);"></span>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab active" onclick="switchTab('view')">This week</button>
+    <button class="tab" onclick="switchTab('setup')">Setup</button>
+  </div>
+
+  <!-- VIEW TAB -->
+  <div id="view-tab">
+    <div class="summary-cards" id="summary-cards"></div>
+    <div class="filter-bar">      <span style="font-size:12px;color:var(--color-text-secondary);">Source:</span>
+      <button class="filter-btn active" id="f-roster" onclick="toggleSource('roster')">Roster</button>
+      <button class="filter-btn active" id="f-available" onclick="toggleSource('available')">Available</button>
+      <span style="font-size:12px;color:var(--color-text-secondary);margin-left:4px;">Filter:</span>
+      <button class="filter-btn" id="f-2start" onclick="toggle2Start()">2-start only</button>
+      <button class="filter-btn" onclick="clearFilters()" style="color:var(--color-text-tertiary);">Clear</button>
+      <span style="margin-left:auto;font-size:12px;color:var(--color-text-secondary);">Days:</span>
+      <button class="filter-btn active" id="week-toggle" onclick="toggleWeek()">This week</button>
+      <button class="action" onclick="exportCSV()" style="padding:3px 10px;font-size:11px;">Export CSV</button>
+    </div>
+    <input type="text" id="search-input" placeholder="Search pitchers…" oninput="state.search=this.value;render()">
+    <div class="grid"><div id="pitcher-table-container"></div></div>
+  </div>
+
+  <!-- SETUP TAB -->
+  <div id="setup-tab" style="display:none;">
+
+    <div class="edit-panel section">
+      <div class="section-label">Probable pitchers — paste Fangraphs HTML</div>
+      <textarea id="html-input" placeholder="Paste the full HTML from the Fangraphs probable pitchers page here..." rows="5"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+        <button class="action primary" onclick="parseHTML()">Parse HTML</button>
+        <button class="action" onclick="loadSampleData()">Load sample data</button>
+        <button class="action" onclick="clearPitchers()">Clear pitchers</button>
+      </div>
+      <div id="parse-status" style="margin-top:8px;font-size:12px;color:var(--color-text-secondary);"></div>
+    </div>
+
+    <div class="edit-panel section" id="panel-roster">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div class="section-label" style="margin-bottom:0;">My roster — one pitcher name per line</div>
+        <button class="action" onclick="copyList('roster')" style="padding:3px 10px;font-size:11px;" id="copy-btn-roster">Copy</button>
+      </div>
+      <textarea id="roster-input" placeholder="e.g.&#10;Corbin Burnes&#10;Gerrit Cole&#10;Spencer Strider" rows="6" oninput="markDraft('roster')"></textarea>
+      <div class="draft-bar" id="draft-bar-roster"></div>
+    </div>
+
+    <div class="edit-panel section" id="panel-available">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div class="section-label" style="margin-bottom:0;">Available pitchers (free agents / waiver)</div>
+        <button class="action" onclick="copyList('available')" style="padding:3px 10px;font-size:11px;" id="copy-btn-available">Copy</button>
+      </div>
+      <textarea id="available-input" placeholder="e.g.&#10;Kyle Freeland&#10;Robert Garcia&#10;MacKenzie Gore" rows="6" oninput="markDraft('available')"></textarea>
+      <div class="draft-bar" id="draft-bar-available"></div>
+      <p class="hint">Clicking a pitcher's name or icon in the grid toggles available and saves immediately — no draft needed for that.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const BIN_ID  = '69dd72caaaba882197f6a46a';
+const BIN_KEY = '69dd726b36566621a8ad7faa';
+const BIN_URL = 'https://api.jsonbin.io/v3/b/' + BIN_ID;
+const HEADERS = { 'Content-Type': 'application/json', 'X-Master-Key': BIN_KEY };
+
+let state = {
+  pitchers: [], colDates: [],
+  roster: new Set(), available: new Set(),
+  showRoster: true, showAvailable: true, twoStart: false,
+  weekOnly: false, search: '',
+  draft: { roster: null, available: null },
+  syncing: false
+};
+
+function norm(n) { return n.trim().toLowerCase(); }
+function linesFromSet(s) { return [...s].sort().join('\n'); }
+function setFromText(t) { return new Set(t.split('\n').map(n => n.trim()).filter(Boolean).map(norm)); }
+
+// ── Sync status ───────────────────────────────────────────────────────────────
+
+function setSyncStatus(msg, isError) {
+  let el = document.getElementById('sync-status');
+  if(!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--color-text-danger, #a32d2d)' : 'var(--color-text-tertiary)';
+}
+
+// ── Remote storage ────────────────────────────────────────────────────────────
+
+async function remoteLoad() {
+  try {
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': BIN_KEY } });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    return json.record;
+  } catch(e) { return null; }
+}
+
+async function remoteSave(data) {
+  try {
+    const res = await fetch(BIN_URL, { method: 'PUT', headers: HEADERS, body: JSON.stringify(data) });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return true;
+  } catch(e) { return false; }
+}
+
+function toRecord() {
+  return {
+    pitchers: state.pitchers,
+    colDates: state.colDates,
+    roster:   [...state.roster],
+    available:[...state.available]
+  };
+}
+
+async function pushState() {
+  setSyncStatus('Saving…');
+  // Also write to localStorage as fallback
+  localStorage.setItem('fbp_data', JSON.stringify(toRecord()));
+  const ok = await remoteSave(toRecord());
+  setSyncStatus(ok ? 'Saved' : 'Saved locally (sync failed)');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+async function init() {
+  setSyncStatus('Loading…');
+  let data = await remoteLoad();
+  if(data) {
+    setSyncStatus('');
+  } else {
+    // Fall back to localStorage
+    setSyncStatus('Offline — using local data');
+    try { const d = localStorage.getItem('fbp_data'); if(d) data = JSON.parse(d); } catch(e){}
+  }
+  if(data) {
+    state.pitchers  = data.pitchers  || [];
+    state.colDates  = data.colDates  || [];
+    state.roster    = new Set(data.roster    || []);
+    state.available = new Set(data.available || []);
+  }
+  document.getElementById('roster-input').value    = linesFromSet(state.roster);
+  document.getElementById('available-input').value = linesFromSet(state.available);
+  renderDraftBar('roster');
+  renderDraftBar('available');
+  render();
+}
+
+// ── Draft / save ─────────────────────────────────────────────────────────────
+
+function markDraft(which) {
+  state.draft[which] = document.getElementById(which === 'roster' ? 'roster-input' : 'available-input').value;
+  document.getElementById('panel-' + which).classList.add('has-changes');
+  renderDraftBar(which);
+}
+
+async function saveDraft(which) {
+  if(state.draft[which] === null) return;
+  const s = setFromText(state.draft[which]);
+  if(which === 'roster') state.roster = s;
+  else state.available = s;
+  state.draft[which] = null;
+  document.getElementById('panel-' + which).classList.remove('has-changes');
+  renderDraftBar(which);
+  render();
+  await pushState();
+}
+
+function discardDraft(which) {
+  const current = which === 'roster' ? state.roster : state.available;
+  document.getElementById(which === 'roster' ? 'roster-input' : 'available-input').value = linesFromSet(current);
+  state.draft[which] = null;
+  document.getElementById('panel-' + which).classList.remove('has-changes');
+  renderDraftBar(which);
+}
+
+function renderDraftBar(which) {
+  const bar = document.getElementById('draft-bar-' + which);
+  if(state.draft[which] !== null) {
+    bar.innerHTML = '<span class="draft-msg">Unsaved changes</span>'
+      + '<button class="action primary" onclick="saveDraft(\'' + which + '\')" style="padding:4px 12px;font-size:12px;">Save</button>'
+      + '<button class="action" onclick="discardDraft(\'' + which + '\')" style="padding:4px 12px;font-size:12px;">Discard</button>';
+  } else {
+    bar.innerHTML = '<span class="saved-msg">Saved</span>';
+  }
+}
+
+// ── Grid toggle (immediate, no draft) ────────────────────────────────────────
+
+function copyList(which) {
+  const s = which === 'roster' ? state.roster : state.available;
+  const text = [...s].sort().join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-btn-' + which);
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+  });
+}
+
+async function toggleAvailable(name) {
+  const k = norm(name);
+  const current = state.roster.has(k) ? 'roster' : state.available.has(k) ? 'available' : 'neither';
+  state.roster.delete(k);
+  state.available.delete(k);
+  if(current === 'neither')        state.available.add(k);
+  else if(current === 'available') state.roster.add(k);
+  if(state.draft.roster === null)    document.getElementById('roster-input').value    = linesFromSet(state.roster);
+  if(state.draft.available === null) document.getElementById('available-input').value = linesFromSet(state.available);
+  render();
+  await pushState();
+}
+
+// ── Navigation / filters ─────────────────────────────────────────────────────
+
+function switchTab(tab) {
+  document.getElementById('view-tab').style.display  = tab === 'view'  ? '' : 'none';
+  document.getElementById('setup-tab').style.display = tab === 'setup' ? '' : 'none';
+  document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='view')||(i===1&&tab==='setup')));
+}
+
+function toggleSource(which) {
+  if(which === 'roster') state.showRoster = !state.showRoster;
+  else state.showAvailable = !state.showAvailable;
+  document.getElementById('f-roster').classList.toggle('active', state.showRoster);
+  document.getElementById('f-available').classList.toggle('active', state.showAvailable);
+  render();
+}
+
+function toggle2Start() {
+  state.twoStart = !state.twoStart;
+  document.getElementById('f-2start').classList.toggle('active', state.twoStart);
+  render();
+}
+
+function clearFilters() {
+  state.showRoster = true; state.showAvailable = true; state.twoStart = false;
+  document.getElementById('f-roster').classList.add('active');
+  document.getElementById('f-available').classList.add('active');
+  document.getElementById('f-2start').classList.remove('active');
+  document.getElementById('search-input').value = '';
+  state.search = '';
+  render();
+}
+
+function toggleWeek() {
+  state.weekOnly = !state.weekOnly;
+  const btn = document.getElementById('week-toggle');
+  btn.textContent = state.weekOnly ? 'All days' : 'This week';
+  btn.classList.toggle('active', !state.weekOnly);
+  render();
+}
+
+// ── Parsing ───────────────────────────────────────────────────────────────────
+
+function parseHTML() {
+  const raw = document.getElementById('html-input').value.trim();
+  if(!raw) { document.getElementById('parse-status').textContent = 'Paste HTML first.'; return; }
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  let found = false;
+
+  for(const table of doc.querySelectorAll('table')) {
+    let dateCols = [];
+    for(const row of table.querySelectorAll('tbody tr')) {
+      const ths = [...row.querySelectorAll('th')];
+      if(ths.length < 4) continue;
+      const candidates = [];
+      ths.forEach((th, i) => {
+        if(i === 0) return;
+        const dateMatch = th.innerHTML.match(/(\d+\/\d+)/);
+        const dayMatch  = th.textContent.match(/^(\w+)/);
+        if(dateMatch) candidates.push({ idx: i, date: dateMatch[1], day: dayMatch ? dayMatch[1] : '' });
+      });
+      if(candidates.length >= 5) { dateCols = candidates; break; }
+    }
+    if(dateCols.length < 3) continue;
+
+    const pitcherMap = {};
+    for(const row of table.querySelectorAll('tbody tr')) {
+      const cells = [...row.querySelectorAll('td')];
+      if(cells.length < 2) continue;
+      const teamCell = cells.find(c => c.getAttribute('data-stat') === 'Team');
+      if(!teamCell) continue;
+      const team = teamCell.textContent.trim();
+      dateCols.forEach(function(col) {
+        const cell = cells[col.idx];
+        if(!cell) return;
+        const anchor = cell.querySelector('a');
+        if(!anchor) return;
+        const name = anchor.textContent.trim().replace(/\s*\([LRS]\)\s*$/, '');
+        if(!name || name.length < 3) return;
+        const opp = cell.childNodes[0] ? cell.childNodes[0].textContent.trim() : '';
+        const key = norm(name);
+        if(!pitcherMap[key]) pitcherMap[key] = { name, team, schedule: {} };
+        pitcherMap[key].schedule[col.date] = opp || '?';
+      });
+    }
+    if(!Object.keys(pitcherMap).length) continue;
+
+    state.colDates = dateCols.map(c => ({ date: c.date, day: c.day }));
+    state.pitchers = Object.values(pitcherMap);
+    document.getElementById('parse-status').textContent = 'Parsed ' + state.pitchers.length + ' pitchers across ' + state.colDates.length + ' days. Saving…';
+    found = true;
+    render();
+    pushState().then(() => { document.getElementById('parse-status').textContent = 'Parsed ' + state.pitchers.length + ' pitchers across ' + state.colDates.length + ' days.'; });
+    break;
+  }
+  if(!found) document.getElementById('parse-status').textContent = 'Could not parse — check that you pasted the full table HTML.';
+}
+
+async function clearPitchers() {
+  state.pitchers = []; state.colDates = [];
+  document.getElementById('parse-status').textContent = 'Cleared.';
+  render();
+  await pushState();
+}
+
+async function loadSampleData() {
+  state.colDates = [{day:'Mon',date:'4/14'},{day:'Tue',date:'4/15'},{day:'Wed',date:'4/16'},{day:'Thu',date:'4/17'},{day:'Fri',date:'4/18'},{day:'Sat',date:'4/19'},{day:'Sun',date:'4/20'}];
+  state.pitchers = [
+    { name: 'Dean Kremer',    team: 'BAL', schedule: { '4/14': 'ARI' } },
+    { name: 'Trevor Rogers',  team: 'BAL', schedule: { '4/15': 'ARI', '4/20': '@ CLE' } },
+    { name: 'Kyle Bradish',   team: 'BAL', schedule: { '4/16': 'ARI', '4/18': '@ KCR' } },
+    { name: 'Shane Baz',      team: 'BAL', schedule: { '4/17': '@ CLE', '4/19': '@ KCR' } },
+    { name: 'Gerrit Cole',    team: 'NYY', schedule: { '4/14': 'BOS', '4/19': 'TB' } },
+    { name: 'MacKenzie Gore', team: 'TEX', schedule: { '4/14': 'ATL', '4/18': 'PHI' } },
+    { name: 'Logan Webb',     team: 'SF',  schedule: { '4/15': 'COL', '4/20': 'LAD' } },
+    { name: 'Freddy Peralta', team: 'MIL', schedule: { '4/16': 'PIT', '4/19': 'CHC' } },
+    { name: 'Robert Garcia',  team: 'TEX', schedule: { '4/15': 'SEA', '4/18': 'MIN' } },
+    { name: 'Nick Pivetta',   team: 'BOS', schedule: { '4/16': 'NYY', '4/19': 'TOR' } },
+    { name: 'Zac Gallen',     team: 'ARI', schedule: { '4/17': 'SF'  } },
+  ];
+  localStorage.setItem('fbp_data', JSON.stringify(toRecord()));
+  document.getElementById('parse-status').textContent = 'Sample data loaded.';
+  render();
+  await pushState();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function startsCount(p, limitCols) {
+  const cols = limitCols || state.colDates;
+  return cols.filter(c => { const d = typeof c === 'string' ? c : c.date; return !!p.schedule[d]; }).length;
+}
+
+function startsCountWeek(p) {
+  return startsCount(p, state.colDates.slice(0, 7));
+}
+
+function getStatus(p) {
+  const k = norm(p.name);
+  if(state.roster.has(k))    return 'roster';
+  if(state.available.has(k)) return 'available';
+  return 'neither';
+}
+
+function exportCSV() {
+  let pitchers = [...state.pitchers];
+  if(state.showRoster || state.showAvailable) {
+    pitchers = pitchers.filter(p => {
+      const s = getStatus(p);
+      return (state.showRoster && s === 'roster') || (state.showAvailable && s === 'available');
+    });
+  }
+  if(state.twoStart) pitchers = pitchers.filter(p => startsCountWeek(p) >= 2);
+  if(state.search) { const q = state.search.toLowerCase(); pitchers = pitchers.filter(p => p.name.toLowerCase().includes(q) || (p.team||'').toLowerCase().includes(q)); }
+  pitchers.sort((a,b) => { const sa=getStatus(a)==='roster'?0:1, sb=getStatus(b)==='roster'?0:1; if(sa!==sb) return sa-sb; return startsCount(b)-startsCount(a); });
+
+  const cols = state.weekOnly ? state.colDates.slice(0, 7) : state.colDates;
+  const dateHeaders = cols.map(c => typeof c === 'string' ? c : c.date);
+  const header = ['Team','Pitcher','Status', ...dateHeaders];
+
+  const rows = pitchers.map(p => {
+    const status = getStatus(p);
+    const dayCols = cols.map(c => { const d = typeof c === 'string' ? c : c.date; return p.schedule[d] || ''; });
+    return [p.team||'', p.name, status, ...dayCols].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+  });
+
+  const csv = [header.join(','), ...rows].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'pitchers.csv';
+  a.click();
+}
+
+function render() { renderSummary(); renderTable(); }
+
+function renderSummary() {
+  const all      = state.pitchers;
+  const onRoster = all.filter(p => getStatus(p) === 'roster');
+  const onAvail  = all.filter(p => getStatus(p) === 'available');
+  const twoStart = all.filter(p => getStatus(p) !== 'neither' && startsCountWeek(p) >= 2);
+  document.getElementById('summary-cards').innerHTML =
+    '<div class="summary-card"><div class="num">' + onRoster.length + '</div><div class="lbl">On my roster</div></div>' +
+    '<div class="summary-card"><div class="num">' + onAvail.length  + '</div><div class="lbl">Available</div></div>' +
+    '<div class="summary-card"><div class="num">' + twoStart.length + '</div><div class="lbl">2-start (actionable)</div></div>' +
+    '<div class="summary-card"><div class="num">' + all.length      + '</div><div class="lbl">Total pitchers</div></div>';
+}
+
+function renderTable() {
+  let pitchers = [...state.pitchers];
+  // Source filter: OR logic — if both unchecked, show all
+  if(state.showRoster || state.showAvailable) {
+    pitchers = pitchers.filter(p => {
+      const s = getStatus(p);
+      return (state.showRoster && s === 'roster') || (state.showAvailable && s === 'available');
+    });
+  }
+  // 2-start: AND on top of source filter
+  if(state.twoStart) pitchers = pitchers.filter(p => startsCountWeek(p) >= 2);
+  // Search
+  if(state.search) {
+    const q = state.search.toLowerCase();
+    pitchers = pitchers.filter(p => p.name.toLowerCase().includes(q) || (p.team||'').toLowerCase().includes(q));
+  }
+  pitchers.sort((a,b) => {
+    const sa = getStatus(a) === 'roster' ? 0 : 1;
+    const sb = getStatus(b) === 'roster' ? 0 : 1;
+    if(sa !== sb) return sa - sb;
+    return startsCount(b) - startsCount(a);
+  });
+
+  const container = document.getElementById('pitcher-table-container');
+  if(pitchers.length === 0) {
+    container.innerHTML = '<div class="empty-state">' + (state.pitchers.length === 0 ? 'No pitcher data yet — go to Setup and paste the Fangraphs HTML or load sample data.' : 'No pitchers match this filter.') + '</div>';
+    return;
+  }
+
+  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const cols = state.weekOnly ? state.colDates.slice(0, 7) : state.colDates;
+
+  const headerDays = cols.map(c => {
+    const date = typeof c === 'string' ? c : c.date;
+    let day = typeof c === 'string' ? '' : (c.day || '');
+    if(!day && date) { const parts=date.split('/').map(Number); day=DAY_NAMES[new Date(new Date().getFullYear(),parts[0]-1,parts[1]).getDay()]; }
+    return '<th class="day-col"><span style="font-weight:500">' + day + '</span><br><span style="font-size:10px;font-weight:400;color:var(--color-text-tertiary)">' + date + '</span></th>';
+  }).join('');
+
+  const rows = pitchers.map(p => {
+    const status    = getStatus(p);
+    const iconClass = status === 'roster' ? 'roster' : status === 'available' ? 'available' : 'neither';
+    const icon = status === 'roster'
+      ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-5 6a5 5 0 0 1 10 0H3z"/></svg>'
+      : status === 'available'
+      ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M3 14a5 5 0 0 1 10 0"/></svg>'
+      : '<span style="font-size:11px;line-height:1">+</span>';
+    const tooltip = status === 'roster' ? 'On roster — click to clear' : status === 'available' ? 'Available — click to mark rostered' : 'Click to mark available';
+    const safeN = p.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const dayCells = cols.map(c => {
+      const date = typeof c === 'string' ? c : c.date;
+      const opp = p.schedule[date];
+      return '<td>' + (opp ? '<div class="start-dot has-start">' + opp + '</div>' : '<span style="color:var(--color-text-tertiary)">·</span>') + '</td>';
+    }).join('');
+    return '<tr>'
+      + '<td class="team-td">' + (p.team||'') + '</td>'
+      + '<td class="name-td"><span class="name-toggle" onclick="toggleAvailable(\'' + safeN + '\')" title="' + tooltip + '">' + p.name + '</span></td>'
+      + '<td class="status-td"><span class="status-icon ' + iconClass + '" onclick="toggleAvailable(\'' + safeN + '\')" title="' + tooltip + '">' + icon + '</span></td>'
+      + dayCells
+      + '</tr>';
+  }).join('');
+
+  container.innerHTML =
+    '<table class="pitcher-grid"><thead><tr>'
+    + '<th class="team-col">Team</th>'
+    + '<th class="name-col">Pitcher</th>'
+    + '<th class="status-col"></th>'
+    + headerDays
+    + '</tr></thead><tbody>' + rows + '</tbody></table>'
+    + '<p style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;">Click a pitcher\'s name or status icon to toggle available — saves immediately.</p>';
+}
+
+init();
+</script>
+</body>
+</html>
