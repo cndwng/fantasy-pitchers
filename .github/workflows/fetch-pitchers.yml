@@ -1,0 +1,25 @@
+name: Fetch Fangraphs Pitchers
+
+on:
+  workflow_dispatch:  # manual trigger from GitHub UI or app
+  schedule:
+    - cron: '0 10 * * 1'  # also auto-runs every Monday at 10am UTC
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install node-fetch@3 node-html-parser@6
+
+      - name: Fetch and parse Fangraphs
+        env:
+          JSONBIN_BIN_ID: ${{ secrets.JSONBIN_BIN_ID }}
+          JSONBIN_ACCESS_KEY: ${{ secrets.JSONBIN_ACCESS_KEY }}
+        run: node scripts/fetch-pitchers.js
