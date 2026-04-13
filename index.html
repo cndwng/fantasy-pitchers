@@ -190,7 +190,7 @@ function setSyncStatus(msg, isError) {
 
 async function remoteLoad() {
   try {
-    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': BIN_KEY } });
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Access-Key': BIN_KEY } });
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     return json.record;
