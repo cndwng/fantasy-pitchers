@@ -153,8 +153,8 @@
     <div class="filter-bar">
       <span style="font-size:12px;color:var(--color-text-secondary);">Filter:</span>
       <button class="filter-btn active" id="f-all" onclick="clearFilters()">All</button>
-      <button class="filter-btn active" id="f-roster" onclick="toggleSource('roster')">Roster</button>
-      <button class="filter-btn active" id="f-available" onclick="toggleSource('available')">Available</button>
+      <button class="filter-btn" id="f-roster" onclick="toggleSource('roster')">Roster</button>
+      <button class="filter-btn" id="f-available" onclick="toggleSource('available')">Available</button>
       <button class="filter-btn" id="f-2start" onclick="toggle2Start()">2-start only</button>
       <span style="margin-left:auto;font-size:12px;color:var(--color-text-secondary);">Days:</span>
       <button class="filter-btn active" id="week-toggle" onclick="toggleWeek()">This week</button>
@@ -211,7 +211,7 @@ const HEADERS = { 'Content-Type': 'application/json', 'X-Access-Key': BIN_KEY };
 let state = {
   pitchers: [], colDates: [],
   roster: new Set(), available: new Set(),
-  showRoster: true, showAvailable: true, twoStart: false,
+  showRoster: false, showAvailable: false, twoStart: false,
   weekOnly: false, search: '', focusDate: null,
   draft: { roster: null, available: null },
   syncing: false
@@ -364,7 +364,7 @@ function switchTab(tab) {
 }
 
 function syncAllBtn() {
-  const allDefault = state.showRoster && state.showAvailable && !state.twoStart;
+  const allDefault = !state.showRoster && !state.showAvailable && !state.twoStart;
   document.getElementById('f-all').classList.toggle('active', allDefault);
 }
 
@@ -385,10 +385,10 @@ function toggle2Start() {
 }
 
 function clearFilters() {
-  state.showRoster = true; state.showAvailable = true; state.twoStart = false;
+  state.showRoster = false; state.showAvailable = false; state.twoStart = false;
   state.focusDate = null;
-  document.getElementById('f-roster').classList.add('active');
-  document.getElementById('f-available').classList.add('active');
+  document.getElementById('f-roster').classList.remove('active');
+  document.getElementById('f-available').classList.remove('active');
   document.getElementById('f-2start').classList.remove('active');
   document.getElementById('f-all').classList.add('active');
   document.getElementById('search-input').value = '';
@@ -558,19 +558,20 @@ function renderSummary() {
 
 function renderTable() {
   let pitchers = [...state.pitchers];
-  // Source filter: OR logic — if both unchecked, show all
-  if(state.showRoster || state.showAvailable) {
-    pitchers = pitchers.filter(p => {
-      const s = getStatus(p);
-      return (state.showRoster && s === 'roster') || (state.showAvailable && s === 'available');
-    });
-  }
-  // 2-start: AND on top of source filter
-  if(state.twoStart) pitchers = pitchers.filter(p => startsCountWeek(p) >= 2);
-  // Search
+  // Search overrides all other filters — show every pitcher matching the query
   if(state.search) {
     const q = state.search.toLowerCase();
     pitchers = pitchers.filter(p => p.name.toLowerCase().includes(q) || (p.team||'').toLowerCase().includes(q));
+  } else {
+    // Source filter: OR logic — if both unchecked, show all
+    if(state.showRoster || state.showAvailable) {
+      pitchers = pitchers.filter(p => {
+        const s = getStatus(p);
+        return (state.showRoster && s === 'roster') || (state.showAvailable && s === 'available');
+      });
+    }
+    // 2-start: AND on top of source filter
+    if(state.twoStart) pitchers = pitchers.filter(p => startsCountWeek(p) >= 2);
   }
   pitchers.sort((a,b) => {
     if(state.focusDate) {
