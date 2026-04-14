@@ -59,7 +59,9 @@
   table.pitcher-grid th.name-col { text-align: left; padding-left: 8px; width: 110px; }
   table.pitcher-grid th.team-col { width: 40px; }
   table.pitcher-grid th.status-col { width: 28px; }
-  table.pitcher-grid th.day-col { width: 66px; }
+  table.pitcher-grid th.day-col { width: 66px; cursor: pointer; }
+  table.pitcher-grid th.day-col:hover { background: var(--color-background-secondary); }
+  table.pitcher-grid th.day-col.day-focused { background: var(--color-background-info); color: var(--color-text-info); }
   table.pitcher-grid td { padding: 5px 4px; border-bottom: 0.5px solid var(--color-border-tertiary); vertical-align: middle; background: var(--color-background-primary); text-align: center; white-space: nowrap; }
   table.pitcher-grid td.name-td { text-align: left; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   table.pitcher-grid td.team-td { font-size: 11px; color: var(--color-text-secondary); }
@@ -148,17 +150,19 @@
   <!-- VIEW TAB -->
   <div id="view-tab">
     <div class="summary-cards" id="summary-cards"></div>
-    <div class="filter-bar">      <span style="font-size:12px;color:var(--color-text-secondary);">Source:</span>
+    <div class="filter-bar">
+      <span style="font-size:12px;color:var(--color-text-secondary);">Filter:</span>
+      <button class="filter-btn active" id="f-all" onclick="clearFilters()">All</button>
       <button class="filter-btn active" id="f-roster" onclick="toggleSource('roster')">Roster</button>
       <button class="filter-btn active" id="f-available" onclick="toggleSource('available')">Available</button>
-      <span style="font-size:12px;color:var(--color-text-secondary);margin-left:4px;">Filter:</span>
       <button class="filter-btn" id="f-2start" onclick="toggle2Start()">2-start only</button>
-      <button class="filter-btn" onclick="clearFilters()" style="color:var(--color-text-tertiary);">Clear</button>
       <span style="margin-left:auto;font-size:12px;color:var(--color-text-secondary);">Days:</span>
       <button class="filter-btn active" id="week-toggle" onclick="toggleWeek()">This week</button>
-      <button class="action" onclick="exportCSV()" style="padding:3px 10px;font-size:11px;">Export CSV</button>
     </div>
-    <input type="text" id="search-input" placeholder="Search pitchers…" oninput="state.search=this.value;render()">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <input type="text" id="search-input" placeholder="Search pitchers…" oninput="state.search=this.value;render()" style="margin-bottom:0;flex:1;">
+      <button class="action" onclick="exportCSV()" style="padding:3px 10px;font-size:11px;white-space:nowrap;">Export CSV</button>
+    </div>
     <div class="grid"><div id="pitcher-table-container"></div></div>
   </div>
 
@@ -208,7 +212,7 @@ let state = {
   pitchers: [], colDates: [],
   roster: new Set(), available: new Set(),
   showRoster: true, showAvailable: true, twoStart: false,
-  weekOnly: false, search: '',
+  weekOnly: false, search: '', focusDate: null,
   draft: { roster: null, available: null },
   syncing: false
 };
@@ -276,7 +280,7 @@ async function init() {
   }
   if(data) {
     state.pitchers  = data.pitchers  || [];
-    state.colDates  = data.colDates  || [];
+    state.colDates  = (data.colDates || []).map(c => ({ ...c, day: (c.day || '').replace(/\d+$/, '') }));
     state.roster    = new Set(data.roster    || []);
     state.available = new Set(data.available || []);
   }
@@ -359,27 +363,41 @@ function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='view')||(i===1&&tab==='setup')));
 }
 
+function syncAllBtn() {
+  const allDefault = state.showRoster && state.showAvailable && !state.twoStart;
+  document.getElementById('f-all').classList.toggle('active', allDefault);
+}
+
 function toggleSource(which) {
   if(which === 'roster') state.showRoster = !state.showRoster;
   else state.showAvailable = !state.showAvailable;
   document.getElementById('f-roster').classList.toggle('active', state.showRoster);
   document.getElementById('f-available').classList.toggle('active', state.showAvailable);
+  syncAllBtn();
   render();
 }
 
 function toggle2Start() {
   state.twoStart = !state.twoStart;
   document.getElementById('f-2start').classList.toggle('active', state.twoStart);
+  syncAllBtn();
   render();
 }
 
 function clearFilters() {
   state.showRoster = true; state.showAvailable = true; state.twoStart = false;
+  state.focusDate = null;
   document.getElementById('f-roster').classList.add('active');
   document.getElementById('f-available').classList.add('active');
   document.getElementById('f-2start').classList.remove('active');
+  document.getElementById('f-all').classList.add('active');
   document.getElementById('search-input').value = '';
   state.search = '';
+  render();
+}
+
+function setFocusDate(date) {
+  state.focusDate = state.focusDate === date ? null : date;
   render();
 }
 
@@ -408,7 +426,7 @@ function parseHTML() {
       ths.forEach((th, i) => {
         if(i === 0) return;
         const dateMatch = th.innerHTML.match(/(\d+\/\d+)/);
-        const dayMatch  = th.textContent.match(/^(\w+)/);
+        const dayMatch  = th.textContent.match(/^([A-Za-z]+)/);
         if(dateMatch) candidates.push({ idx: i, date: dateMatch[1], day: dayMatch ? dayMatch[1] : '' });
       });
       if(candidates.length >= 5) { dateCols = candidates; break; }
@@ -507,12 +525,13 @@ function exportCSV() {
   pitchers.sort((a,b) => { const sa=getStatus(a)==='roster'?0:1, sb=getStatus(b)==='roster'?0:1; if(sa!==sb) return sa-sb; return startsCount(b)-startsCount(a); });
 
   const cols = state.weekOnly ? state.colDates.slice(0, 7) : state.colDates;
-  const dateHeaders = cols.map(c => typeof c === 'string' ? c : c.date);
+  const displayCols = state.focusDate ? cols.filter(c => (typeof c === 'string' ? c : c.date) === state.focusDate) : cols;
+  const dateHeaders = displayCols.map(c => typeof c === 'string' ? c : c.date);
   const header = ['Team','Pitcher','Status', ...dateHeaders];
 
   const rows = pitchers.map(p => {
     const status = getStatus(p);
-    const dayCols = cols.map(c => { const d = typeof c === 'string' ? c : c.date; return p.schedule[d] || ''; });
+    const dayCols = displayCols.map(c => { const d = typeof c === 'string' ? c : c.date; return p.schedule[d] || ''; });
     return [p.team||'', p.name, status, ...dayCols].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
   });
 
@@ -554,6 +573,11 @@ function renderTable() {
     pitchers = pitchers.filter(p => p.name.toLowerCase().includes(q) || (p.team||'').toLowerCase().includes(q));
   }
   pitchers.sort((a,b) => {
+    if(state.focusDate) {
+      const ha = a.schedule[state.focusDate] ? 0 : 1;
+      const hb = b.schedule[state.focusDate] ? 0 : 1;
+      if(ha !== hb) return ha - hb;
+    }
     const sa = getStatus(a) === 'roster' ? 0 : 1;
     const sb = getStatus(b) === 'roster' ? 0 : 1;
     if(sa !== sb) return sa - sb;
@@ -568,12 +592,17 @@ function renderTable() {
 
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const cols = state.weekOnly ? state.colDates.slice(0, 7) : state.colDates;
+  const displayCols = state.focusDate ? cols.filter(c => (typeof c === 'string' ? c : c.date) === state.focusDate) : cols;
 
-  const headerDays = cols.map(c => {
+  const headerDays = displayCols.map(c => {
     const date = typeof c === 'string' ? c : c.date;
     let day = typeof c === 'string' ? '' : (c.day || '');
     if(!day && date) { const parts=date.split('/').map(Number); day=DAY_NAMES[new Date(new Date().getFullYear(),parts[0]-1,parts[1]).getDay()]; }
-    return '<th class="day-col"><span style="font-weight:500">' + day + '</span><br><span style="font-size:10px;font-weight:400;color:var(--color-text-tertiary)">' + date + '</span></th>';
+    const focused = state.focusDate === date;
+    return '<th class="day-col' + (focused ? ' day-focused' : '') + '" onclick="setFocusDate(\'' + date + '\')">'
+      + '<span style="font-weight:500">' + day + '</span><br>'
+      + '<span style="font-size:10px;font-weight:400;color:' + (focused ? 'var(--color-text-info)' : 'var(--color-text-tertiary)') + '">' + date + '</span>'
+      + '</th>';
   }).join('');
 
   const rows = pitchers.map(p => {
@@ -586,7 +615,7 @@ function renderTable() {
       : '<span style="font-size:11px;line-height:1">+</span>';
     const tooltip = status === 'roster' ? 'On roster — click to clear' : status === 'available' ? 'Available — click to mark rostered' : 'Click to mark available';
     const safeN = p.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const dayCells = cols.map(c => {
+    const dayCells = displayCols.map(c => {
       const date = typeof c === 'string' ? c : c.date;
       const opp = p.schedule[date];
       return '<td>' + (opp ? '<div class="start-dot has-start">' + opp + '</div>' : '<span style="color:var(--color-text-tertiary)">·</span>') + '</td>';

@@ -39,7 +39,7 @@ function parseTable(html) {
       ths.forEach((th, i) => {
         if(i === 0) return;
         const dateMatch = th.innerHTML.match(/(\d+\/\d+)/);
-        const dayMatch  = th.text.trim().match(/^(\w+)/);
+        const dayMatch  = th.text.trim().match(/^([A-Za-z]+)/);
         if(dateMatch) candidates.push({ idx: i, date: dateMatch[1], day: dayMatch ? dayMatch[1] : '' });
       });
       if(candidates.length >= 5) { dateCols = candidates; break; }
