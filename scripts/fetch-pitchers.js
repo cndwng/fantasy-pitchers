@@ -6,7 +6,15 @@ const BIN_KEY = process.env.JSONBIN_ACCESS_KEY;
 const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 const HEADERS = { 'Content-Type': 'application/json', 'X-Access-Key': BIN_KEY };
 
-function norm(n) { return n.trim().toLowerCase(); }
+const YAHOO_CLIENT_ID     = process.env.YAHOO_CLIENT_ID;
+const YAHOO_CLIENT_SECRET = process.env.YAHOO_CLIENT_SECRET;
+const YAHOO_REFRESH_TOKEN = process.env.YAHOO_REFRESH_TOKEN;
+const YAHOO_LEAGUE_ID     = process.env.YAHOO_LEAGUE_ID; // optional: pick a specific league
+
+// Lowercase + strip diacritics so "Reynaldo López" matches "Reynaldo Lopez"
+function norm(n) {
+  return n.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
 
 // ── Fetch Fangraphs ──────────────────────────────────────────────────────────
 
@@ -79,6 +87,113 @@ function parseTable(html) {
   throw new Error('Could not find pitcher table in Fangraphs HTML');
 }
 
+// ── Yahoo Fantasy ─────────────────────────────────────────────────────────────
+
+async function getYahooToken() {
+  const res = await fetch('https://api.login.yahoo.com/oauth2/get_token', {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/x-www-form-urlencoded',
+      'Authorization': 'Basic ' + Buffer.from(`${YAHOO_CLIENT_ID}:${YAHOO_CLIENT_SECRET}`).toString('base64'),
+    },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: YAHOO_REFRESH_TOKEN }),
+  });
+  if(!res.ok) throw new Error(`Yahoo token refresh failed: ${res.status}`);
+  const data = await res.json();
+  if(data.error) throw new Error(`Yahoo token error: ${data.error_description || data.error}`);
+  return data.access_token;
+}
+
+async function yahooGet(token, path) {
+  const res = await fetch(
+    `https://fantasysports.yahooapis.com/fantasy/v2/${path}?format=json`,
+    { headers: { 'Authorization': `Bearer ${token}` } }
+  );
+  if(!res.ok) throw new Error(`Yahoo API ${res.status}: ${path}`);
+  return res.json();
+}
+
+// Walk Yahoo's nested users→games→teams structure to collect team_key strings.
+function extractTeamKeys(data) {
+  const keys = [];
+  try {
+    const users = data.fantasy_content.users;
+    for(let u = 0; u < (users.count || 0); u++) {
+      const games = users[String(u)].user[1].games;
+      for(let g = 0; g < (games.count || 0); g++) {
+        const game      = games[String(g)].game;
+        const teamsObj  = game[1].teams;
+        for(let t = 0; t < (teamsObj.count || 0); t++) {
+          const attrs    = teamsObj[String(t)].team[0];
+          const keyAttr  = attrs.find(x => x.team_key);
+          const teamKey  = keyAttr?.team_key;
+          if(!teamKey) continue;
+          // Filter to a specific league if YAHOO_LEAGUE_ID is set
+          if(YAHOO_LEAGUE_ID) {
+            const m = teamKey.match(/\.l\.(\d+)\./);
+            if(!m || m[1] !== YAHOO_LEAGUE_ID) continue;
+          }
+          keys.push(teamKey);
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('Could not parse Yahoo team list:', e.message);
+  }
+  return keys;
+}
+
+// Return normalized pitcher names from a /team/{key}/roster/players response.
+function extractPitchers(rosterData) {
+  const names = [];
+  try {
+    const players = rosterData.fantasy_content.team[1].roster['0'].players;
+    for(let i = 0; i < (players.count || 0); i++) {
+      const attrs     = players[String(i)].player[0];
+      let name        = '';
+      let positions   = [];
+      for(const attr of attrs) {
+        if(attr.full_name) name = attr.full_name;
+        if(Array.isArray(attr.eligible_positions))
+          positions = attr.eligible_positions.map(p => p.position);
+      }
+      if(name && positions.some(p => ['SP', 'RP', 'P'].includes(p)))
+        names.push(name);
+    }
+  } catch(e) {
+    console.warn('Could not parse Yahoo roster players:', e.message);
+  }
+  return names;
+}
+
+// Returns a list of normalized pitcher names from the user's Yahoo team,
+// or null if Yahoo credentials aren't configured / the sync fails.
+async function fetchYahooRoster() {
+  if(!YAHOO_CLIENT_ID || !YAHOO_CLIENT_SECRET || !YAHOO_REFRESH_TOKEN) {
+    console.log('Yahoo credentials not set — skipping roster sync.');
+    return null;
+  }
+
+  console.log('Syncing roster from Yahoo Fantasy...');
+  const token    = await getYahooToken();
+  const teamsData = await yahooGet(token, 'users;use_login=1/games;game_keys=mlb/teams');
+  const teamKeys  = extractTeamKeys(teamsData);
+
+  if(!teamKeys.length) {
+    console.warn('No Yahoo Fantasy MLB teams found for this account.');
+    return null;
+  }
+  if(teamKeys.length > 1) {
+    console.log(`Found ${teamKeys.length} MLB teams; using ${teamKeys[0]}.`);
+    console.log('Set YAHOO_LEAGUE_ID secret to pin a specific league.');
+  }
+
+  const rosterData = await yahooGet(token, `team/${teamKeys[0]}/roster/players`);
+  const pitchers   = extractPitchers(rosterData);
+  console.log(`Yahoo roster: ${pitchers.length} pitcher(s) — ${pitchers.join(', ')}`);
+  return pitchers.map(n => norm(n));
+}
+
 // ── JSONBin ──────────────────────────────────────────────────────────────────
 
 async function loadBin() {
@@ -101,15 +216,22 @@ async function saveBin(data) {
     const html = await fetchFangraphs();
     const { pitchers, colDates } = parseTable(html);
 
-    // Load existing bin so we preserve roster + available
     const existing = await loadBin();
-    console.log(`Preserving ${existing.roster?.length || 0} roster, ${existing.available?.length || 0} available entries.`);
+
+    // Try Yahoo roster sync; fall back to whatever was already stored.
+    const yahooRoster = await fetchYahooRoster().catch(e => {
+      console.warn('Yahoo sync failed (keeping existing roster):', e.message);
+      return null;
+    });
+
+    const roster = yahooRoster !== null ? yahooRoster : (existing.roster || []);
+    console.log(`Roster: ${roster.length} pitcher(s) ${yahooRoster !== null ? '(from Yahoo)' : '(preserved)'}.`);
 
     await saveBin({
       pitchers,
       colDates,
-      roster:    existing.roster    || [],
-      available: existing.available || []
+      roster,
+      available: existing.available || [],
     });
 
     console.log('Done.');

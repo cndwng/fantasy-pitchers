@@ -217,7 +217,7 @@ let state = {
   syncing: false
 };
 
-function norm(n) { return n.trim().toLowerCase(); }
+function norm(n) { return n.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 function linesFromSet(s) { return [...s].sort().join('\n'); }
 function setFromText(t) { return new Set(t.split('\n').map(n => n.trim()).filter(Boolean).map(norm)); }
 

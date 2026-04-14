@@ -22,4 +22,8 @@ jobs:
         env:
           JSONBIN_BIN_ID: ${{ secrets.JSONBIN_BIN_ID }}
           JSONBIN_ACCESS_KEY: ${{ secrets.JSONBIN_ACCESS_KEY }}
+          YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
+          YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
+          YAHOO_REFRESH_TOKEN: ${{ secrets.YAHOO_REFRESH_TOKEN }}
+          YAHOO_LEAGUE_ID: ${{ secrets.YAHOO_LEAGUE_ID }}
         run: node scripts/fetch-pitchers.js
