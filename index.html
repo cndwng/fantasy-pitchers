@@ -558,19 +558,20 @@ function renderSummary() {
 
 function renderTable() {
   let pitchers = [...state.pitchers];
-  // Source filter: OR logic — if both unchecked, show all
-  if(state.showRoster || state.showAvailable) {
-    pitchers = pitchers.filter(p => {
-      const s = getStatus(p);
-      return (state.showRoster && s === 'roster') || (state.showAvailable && s === 'available');
-    });
-  }
-  // 2-start: AND on top of source filter
-  if(state.twoStart) pitchers = pitchers.filter(p => startsCountWeek(p) >= 2);
-  // Search
+  // Search overrides all other filters — show every pitcher matching the query
   if(state.search) {
     const q = state.search.toLowerCase();
     pitchers = pitchers.filter(p => p.name.toLowerCase().includes(q) || (p.team||'').toLowerCase().includes(q));
+  } else {
+    // Source filter: OR logic — if both unchecked, show all
+    if(state.showRoster || state.showAvailable) {
+      pitchers = pitchers.filter(p => {
+        const s = getStatus(p);
+        return (state.showRoster && s === 'roster') || (state.showAvailable && s === 'available');
+      });
+    }
+    // 2-start: AND on top of source filter
+    if(state.twoStart) pitchers = pitchers.filter(p => startsCountWeek(p) >= 2);
   }
   pitchers.sort((a,b) => {
     if(state.focusDate) {
