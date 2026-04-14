@@ -166,36 +166,24 @@ function extractRosterPitchers(rosterData) {
   return names;
 }
 
-// Paginate through all available (FA + waiver) pitchers for a given position
-// filter ('SP' or 'RP') in the league. Deduplicated via the passed-in Set.
-async function fetchAvailableByPosition(token, leagueKey, position, seen) {
-  const PAGE = 25;
-  let start  = 0;
-  while(true) {
-    const path = `league/${leagueKey}/players;status=A;position=${position};count=${PAGE};start=${start}`;
-    const data = await yahooGet(token, path);
-    let count = 0;
-    try {
-      const playersObj = data.fantasy_content.league[1].players;
-      count = playersObj.count || 0;
-      for(let i = 0; i < count; i++) {
-        const attrs = playersObj[String(i)]?.player?.[0];
-        if(!attrs) continue;
-        let name = '';
-        for(const attr of attrs) { if(attr.full_name) { name = attr.full_name; break; } }
-        if(name) seen.add(name);
-      }
-    } catch(e) {
-      console.warn(`Could not parse ${position} available page (start=${start}):`, e.message);
-      break;
+// Extract all team keys from a /league/{key}/teams response.
+function extractLeagueTeamKeys(data) {
+  const keys = [];
+  try {
+    const teams = data.fantasy_content.league[1].teams;
+    for(let t = 0; t < (teams.count || 0); t++) {
+      const attrs  = teams[String(t)].team[0];
+      const keyObj = attrs.find(x => x.team_key);
+      if(keyObj?.team_key) keys.push(keyObj.team_key);
     }
-    if(count < PAGE) break;
-    start += PAGE;
+  } catch(e) {
+    console.warn('Could not parse league team list:', e.message);
   }
+  return keys;
 }
 
-// Returns { roster, available } of normalized pitcher name arrays,
-// or null if Yahoo credentials aren't configured.
+// Returns { mine: Set<normalizedName>, taken: Set<normalizedName> } of all
+// pitchers currently on any roster in the league, or null on failure.
 async function syncFromYahoo() {
   if(!YAHOO_CLIENT_ID || !YAHOO_CLIENT_SECRET || !YAHOO_REFRESH_TOKEN) {
     console.log('Yahoo credentials not set — skipping sync.');
@@ -203,42 +191,36 @@ async function syncFromYahoo() {
   }
 
   console.log('Syncing from Yahoo Fantasy...');
-  const token     = await getYahooToken();
-  const teamsData = await yahooGet(token, 'users;use_login=1/games;game_keys=mlb/teams');
-  const teamKeys  = extractTeamKeys(teamsData);
+  const token = await getYahooToken();
 
-  if(!teamKeys.length) {
-    console.warn('No Yahoo Fantasy MLB teams found for this account.');
-    return null;
-  }
-  if(teamKeys.length > 1) {
-    console.log(`Found ${teamKeys.length} MLB teams; using ${teamKeys[0]}.`);
+  // Find user's team key
+  const myTeamsData = await yahooGet(token, 'users;use_login=1/games;game_keys=mlb/teams');
+  const myTeamKeys  = extractTeamKeys(myTeamsData);
+  if(!myTeamKeys.length) { console.warn('No Yahoo Fantasy MLB teams found.'); return null; }
+  if(myTeamKeys.length > 1) {
+    console.log(`Found ${myTeamKeys.length} MLB teams; using ${myTeamKeys[0]}.`);
     console.log('Set YAHOO_LEAGUE_ID secret to pin a specific league.');
   }
+  const myTeamKey = myTeamKeys[0];
+  const leagueKey = myTeamKey.match(/^(\d+\.l\.\d+)/)?.[1];
+  if(!leagueKey) { console.warn('Could not derive league key.'); return null; }
 
-  const teamKey   = teamKeys[0];
-  const leagueKey = teamKey.match(/^(\d+\.l\.\d+)/)?.[1];
+  // Get every team key in the league
+  const leagueTeamsData = await yahooGet(token, `league/${leagueKey}/teams`);
+  const allTeamKeys     = extractLeagueTeamKeys(leagueTeamsData);
+  console.log(`League has ${allTeamKeys.length} team(s).`);
 
-  // ── Roster ────────────────────────────────────────────────────────────────
-  const rosterData     = await yahooGet(token, `team/${teamKey}/roster/players`);
-  const rosterPitchers = extractRosterPitchers(rosterData);
-  console.log(`Yahoo roster: ${rosterPitchers.length} pitcher(s) — ${rosterPitchers.join(', ')}`);
-
-  // ── Available (FA + waivers) ──────────────────────────────────────────────
-  const availableNames = new Set();
-  if(leagueKey) {
-    // Fetch SP and RP separately so we cover leagues that don't use a generic P slot.
-    await fetchAvailableByPosition(token, leagueKey, 'SP', availableNames);
-    await fetchAvailableByPosition(token, leagueKey, 'RP', availableNames);
-    console.log(`Yahoo available: ${availableNames.size} pitcher(s) in league.`);
-  } else {
-    console.warn('Could not derive league key from team key — skipping available sync.');
+  // Fetch every team's pitcher roster and split into mine vs taken
+  const mine  = new Set();
+  const taken = new Set();
+  for(const teamKey of allTeamKeys) {
+    const rosterData = await yahooGet(token, `team/${teamKey}/roster/players`);
+    const pitchers   = extractRosterPitchers(rosterData);
+    const bucket     = teamKey === myTeamKey ? mine : taken;
+    for(const name of pitchers) bucket.add(norm(name));
   }
-
-  return {
-    roster:    rosterPitchers.map(n => norm(n)),
-    available: [...availableNames].map(n => norm(n)),
-  };
+  console.log(`My roster: ${mine.size} pitcher(s). Taken by others: ${taken.size}.`);
+  return { mine, taken };
 }
 
 // ── JSONBin ──────────────────────────────────────────────────────────────────
@@ -273,18 +255,16 @@ async function saveBin(data) {
 
     let roster, available;
     if(yahooSync) {
-      roster = yahooSync.roster;
-
-      // Only keep available pitchers who actually have a start in the grid —
-      // no point tracking closers or long relievers with no probable start.
-      const inGrid = new Set(pitchers.map(p => norm(p.name)));
-      available = yahooSync.available.filter(n => inGrid.has(n));
-      console.log(`Roster: ${roster.length} pitcher(s) (from Yahoo).`);
-      console.log(`Available: ${available.length} pitcher(s) with a start this week (from Yahoo).`);
+      const { mine, taken } = yahooSync;
+      // Walk the probables grid: pitchers not on any roster are available.
+      const rostered = new Set([...mine, ...taken]);
+      roster    = [...mine];
+      available = pitchers.map(p => norm(p.name)).filter(n => !rostered.has(n));
+      console.log(`Roster: ${roster.length}. Available in grid: ${available.length}. Taken by others: ${taken.size}.`);
     } else {
       roster    = existing.roster    || [];
       available = existing.available || [];
-      console.log(`Roster: ${roster.length} pitcher(s) (preserved). Available: ${available.length} (preserved).`);
+      console.log(`Roster: ${roster.length} (preserved). Available: ${available.length} (preserved).`);
     }
 
     await saveBin({ pitchers, colDates, roster, available });
