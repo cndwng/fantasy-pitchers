@@ -91,6 +91,46 @@
   .saved-msg { font-size: 12px; color: var(--color-text-tertiary); }
   input[type=text] { width: 100%; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 6px 10px; font-size: 13px; font-family: var(--font-sans); background: var(--color-background-primary); color: var(--color-text-primary); margin-bottom: 10px; }
   input[type=text]:focus { outline: none; border-color: var(--color-border-primary); }
+  /* Sticky table header */
+  table.pitcher-grid thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--color-background-primary);
+  }
+  /* Sticky first 3 columns */
+  table.pitcher-grid th.team-col,
+  table.pitcher-grid td.team-td {
+    position: sticky;
+    left: 0;
+    background: var(--color-background-primary);
+  }
+  table.pitcher-grid th.name-col,
+  table.pitcher-grid td.name-td {
+    position: sticky;
+    left: 40px;
+    background: var(--color-background-primary);
+  }
+  table.pitcher-grid th.status-col,
+  table.pitcher-grid td.status-td {
+    position: sticky;
+    left: 150px;
+    background: var(--color-background-primary);
+    border-right: 0.5px solid var(--color-border-tertiary);
+  }
+  /* Corner cells (sticky header + sticky column) need highest z-index */
+  table.pitcher-grid thead th.team-col,
+  table.pitcher-grid thead th.name-col,
+  table.pitcher-grid thead th.status-col { z-index: 3; }
+  /* Preserve hover background on sticky cells */
+  table.pitcher-grid tr:hover td.team-td,
+  table.pitcher-grid tr:hover td.name-td,
+  table.pitcher-grid tr:hover td.status-td { background: var(--color-background-secondary); }
+  /* Mobile layout */
+  @media (max-width: 768px) {
+    body { padding: 1rem 16px; }
+    .grid { margin-left: -16px; margin-right: -16px; }
+  }
 </style>
 </head>
 <body>
@@ -568,6 +608,15 @@ function renderTable() {
     + '</tr></thead><tbody>' + rows + '</tbody></table>'
     + '<p style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;">Click a pitcher\'s name or status icon to toggle available — saves immediately.</p>';
 }
+
+window.addEventListener('scroll', function() {
+  var table = document.querySelector('table.pitcher-grid');
+  if (!table) return;
+  var thead = table.querySelector('thead');
+  if (!thead) return;
+  var gridTop = table.closest('.grid').getBoundingClientRect().top;
+  thead.style.transform = gridTop < 0 ? 'translateY(' + Math.round(-gridTop) + 'px)' : '';
+}, { passive: true });
 
 init();
 </script>
