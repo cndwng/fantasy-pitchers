@@ -6,10 +6,11 @@ export default async function handler(req, res) {
   if (!userId) return;
 
   const supabase = db();
-  const [pitchersRes, datesRes, statusRes] = await Promise.all([
+  const [pitchersRes, datesRes, statusRes, starsRes] = await Promise.all([
     supabase.from('pitchers').select('name, name_norm, team, schedule'),
     supabase.from('col_dates').select('date, day, ord').order('ord'),
-    supabase.from('user_pitcher_status').select('pitcher_name_norm, status').eq('user_id', userId)
+    supabase.from('user_pitcher_status').select('pitcher_name_norm, status').eq('user_id', userId),
+    supabase.from('user_pitcher_stars').select('pitcher_name_norm').eq('user_id', userId)
   ]);
 
   if (pitchersRes.error) {
@@ -22,11 +23,13 @@ export default async function handler(req, res) {
   for (const row of statusRes.data || []) {
     (row.status === 'roster' ? roster : available).push(row.pitcher_name_norm);
   }
+  const starred = (starsRes.data || []).map(r => r.pitcher_name_norm);
 
   res.status(200).json({
     pitchers: pitchersRes.data || [],
     colDates: (datesRes.data || []).map(d => ({ date: d.date, day: d.day })),
     roster,
-    available
+    available,
+    starred
   });
 }

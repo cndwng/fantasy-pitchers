@@ -71,11 +71,16 @@
   .status-icon.roster { background: #EAF3DE; color: #3B6D11; }
   .status-icon.available { background: #E6F1FB; color: #185FA5; }
   .status-icon.neither { color: var(--color-text-tertiary); }
+  .star-btn { display: inline-block; cursor: pointer; user-select: none; font-size: 14px; line-height: 1; margin-right: 6px; color: var(--color-text-tertiary); width: 14px; text-align: center; }
+  .star-btn.starred { color: #d4a017; }
+  .star-btn:hover { color: var(--color-text-primary); }
+  .star-btn.starred:hover { color: #b8870f; }
   .start-dot { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; margin: 0 auto; }
   .has-start { background: #E1F5EE; color: #0F6E56; }
   .name-toggle { cursor: pointer; font-size: 13px; }
   .name-toggle:hover { text-decoration: underline; }
-  .summary-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  .summary-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  @media (max-width: 768px) { .summary-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   .summary-card { background: var(--color-background-primary); border-radius: var(--border-radius-md); padding: 10px 12px; border: 0.5px solid var(--color-border-tertiary); }
   .summary-card .num { font-size: 22px; font-weight: 500; }
   .summary-card .lbl { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
@@ -176,6 +181,7 @@
         <button class="filter-btn active" id="f-all" onclick="clearFilters()">All</button>
         <button class="filter-btn" id="f-roster" onclick="toggleSource('roster')">Roster</button>
         <button class="filter-btn" id="f-available" onclick="toggleSource('available')">Available</button>
+        <button class="filter-btn" id="f-starred" onclick="toggleStarredFilter()">Starred</button>
         <button class="filter-btn" id="f-2start" onclick="toggle2Start()">2-start only</button>
         <span style="margin-left:auto;font-size:12px;color:var(--color-text-secondary);">Days:</span>
         <button class="filter-btn active" id="week-toggle" onclick="toggleWeek()">This week</button>
@@ -207,8 +213,8 @@
 <script>
 let state = {
   pitchers: [], colDates: [],
-  roster: new Set(), available: new Set(),
-  showRoster: false, showAvailable: false, twoStart: false,
+  roster: new Set(), available: new Set(), starred: new Set(),
+  showRoster: false, showAvailable: false, showStarred: false, twoStart: false,
   weekOnly: false, search: '', focusDate: null,
   user: null, selection: null
 };
@@ -353,6 +359,31 @@ async function loadAll() {
   state.colDates  = (data.colDates || []).map(c => ({ ...c, day: (c.day || '').replace(/\d+$/, '') }));
   state.roster    = new Set(data.roster    || []);
   state.available = new Set(data.available || []);
+  state.starred   = new Set(data.starred   || []);
+}
+
+async function toggleStar(nameNorm) {
+  if (!nameNorm) return;
+  const wasStarred = state.starred.has(nameNorm);
+  if (wasStarred) state.starred.delete(nameNorm);
+  else state.starred.add(nameNorm);
+  render();
+  try {
+    const r = await api('/api/stars', {
+      method: 'POST',
+      body: { name_norm: nameNorm, action: wasStarred ? 'remove' : 'add' }
+    });
+    if (typeof r?.starred === 'boolean') {
+      if (r.starred) state.starred.add(nameNorm);
+      else state.starred.delete(nameNorm);
+      render();
+    }
+  } catch (e) {
+    if (wasStarred) state.starred.add(nameNorm);
+    else state.starred.delete(nameNorm);
+    render();
+    setSyncStatus('Could not update star', true);
+  }
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -397,7 +428,7 @@ function switchTab(tab) {
 }
 
 function syncAllBtn() {
-  const allDefault = !state.showRoster && !state.showAvailable && !state.twoStart;
+  const allDefault = !state.showRoster && !state.showAvailable && !state.showStarred && !state.twoStart;
   document.getElementById('f-all').classList.toggle('active', allDefault);
 }
 
@@ -410,6 +441,13 @@ function toggleSource(which) {
   render();
 }
 
+function toggleStarredFilter() {
+  state.showStarred = !state.showStarred;
+  document.getElementById('f-starred').classList.toggle('active', state.showStarred);
+  syncAllBtn();
+  render();
+}
+
 function toggle2Start() {
   state.twoStart = !state.twoStart;
   document.getElementById('f-2start').classList.toggle('active', state.twoStart);
@@ -418,10 +456,11 @@ function toggle2Start() {
 }
 
 function clearFilters() {
-  state.showRoster = false; state.showAvailable = false; state.twoStart = false;
+  state.showRoster = false; state.showAvailable = false; state.showStarred = false; state.twoStart = false;
   state.focusDate = null;
   document.getElementById('f-roster').classList.remove('active');
   document.getElementById('f-available').classList.remove('active');
+  document.getElementById('f-starred').classList.remove('active');
   document.getElementById('f-2start').classList.remove('active');
   document.getElementById('f-all').classList.add('active');
   document.getElementById('search-input').value = '';
@@ -460,6 +499,8 @@ function getStatus(p) {
   return 'neither';
 }
 
+function isStarred(p) { return !!p.name_norm && state.starred.has(p.name_norm); }
+
 function exportCSV() {
   let pitchers = [...state.pitchers];
   if(state.showRoster || state.showAvailable) {
@@ -468,19 +509,26 @@ function exportCSV() {
       return (state.showRoster && s === 'roster') || (state.showAvailable && s === 'available');
     });
   }
+  if(state.showStarred) pitchers = pitchers.filter(isStarred);
   if(state.twoStart) pitchers = pitchers.filter(p => startsCountWeek(p) >= 2);
   if(state.search) { const q = state.search.toLowerCase(); pitchers = pitchers.filter(p => p.name.toLowerCase().includes(q) || (p.team||'').toLowerCase().includes(q)); }
-  pitchers.sort((a,b) => { const sa=getStatus(a)==='roster'?0:1, sb=getStatus(b)==='roster'?0:1; if(sa!==sb) return sa-sb; return startsCount(b)-startsCount(a); });
+  pitchers.sort((a,b) => {
+    const sta = isStarred(a) ? 0 : 1, stb = isStarred(b) ? 0 : 1;
+    if(sta !== stb) return sta - stb;
+    const sa = getStatus(a) === 'roster' ? 0 : 1, sb = getStatus(b) === 'roster' ? 0 : 1;
+    if(sa !== sb) return sa - sb;
+    return startsCount(b) - startsCount(a);
+  });
 
   const cols = state.weekOnly ? state.colDates.slice(0, 7) : state.colDates;
   const displayCols = state.focusDate ? cols.filter(c => (typeof c === 'string' ? c : c.date) === state.focusDate) : cols;
   const dateHeaders = displayCols.map(c => typeof c === 'string' ? c : c.date);
-  const header = ['Team','Pitcher','Status', ...dateHeaders];
+  const header = ['Team','Pitcher','Status','Starred', ...dateHeaders];
 
   const rows = pitchers.map(p => {
     const status = getStatus(p);
     const dayCols = displayCols.map(c => { const d = typeof c === 'string' ? c : c.date; return p.schedule[d] || ''; });
-    return [p.team||'', p.name, status, ...dayCols].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+    return [p.team||'', p.name, status, isStarred(p) ? 'yes' : '', ...dayCols].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
   });
 
   const csv = [header.join(','), ...rows].join('\r\n');
@@ -496,10 +544,12 @@ function renderSummary() {
   const all      = state.pitchers;
   const onRoster = all.filter(p => getStatus(p) === 'roster');
   const onAvail  = all.filter(p => getStatus(p) === 'available');
-  const twoStart = all.filter(p => getStatus(p) !== 'neither' && startsCountWeek(p) >= 2);
+  const starred  = all.filter(isStarred);
+  const twoStart = all.filter(p => (getStatus(p) !== 'neither' || isStarred(p)) && startsCountWeek(p) >= 2);
   document.getElementById('summary-cards').innerHTML =
     '<div class="summary-card"><div class="num">' + onRoster.length + '</div><div class="lbl">On my roster</div></div>' +
     '<div class="summary-card"><div class="num">' + onAvail.length  + '</div><div class="lbl">Available</div></div>' +
+    '<div class="summary-card"><div class="num">' + starred.length  + '</div><div class="lbl">Starred</div></div>' +
     '<div class="summary-card"><div class="num">' + twoStart.length + '</div><div class="lbl">2-start (actionable)</div></div>' +
     '<div class="summary-card"><div class="num">' + all.length      + '</div><div class="lbl">Total pitchers</div></div>';
 }
@@ -518,6 +568,7 @@ function renderTable() {
         return (state.showRoster && s === 'roster') || (state.showAvailable && s === 'available');
       });
     }
+    if(state.showStarred) pitchers = pitchers.filter(isStarred);
     // 2-start: AND on top of source filter
     if(state.twoStart) pitchers = pitchers.filter(p => startsCountWeek(p) >= 2);
   }
@@ -527,6 +578,8 @@ function renderTable() {
       const hb = b.schedule[state.focusDate] ? 0 : 1;
       if(ha !== hb) return ha - hb;
     }
+    const sta = isStarred(a) ? 0 : 1, stb = isStarred(b) ? 0 : 1;
+    if(sta !== stb) return sta - stb;
     const sa = getStatus(a) === 'roster' ? 0 : 1;
     const sb = getStatus(b) === 'roster' ? 0 : 1;
     if(sa !== sb) return sa - sb;
@@ -563,6 +616,10 @@ function renderTable() {
       ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M3 14a5 5 0 0 1 10 0"/></svg>'
       : '<span style="font-size:11px;line-height:1">+</span>';
     const tooltip = status === 'roster' ? 'On your roster' : status === 'available' ? 'Free agent in your league' : '';
+    const starred = isStarred(p);
+    const starGlyph = starred ? '★' : '☆';
+    const starTitle = starred ? 'Starred — click to remove' : 'Click to star';
+    const safeKey = (p.name_norm || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const dayCells = displayCols.map(c => {
       const date = typeof c === 'string' ? c : c.date;
       const opp = p.schedule[date];
@@ -570,7 +627,10 @@ function renderTable() {
     }).join('');
     return '<tr>'
       + '<td class="team-td">' + escapeHtml(p.team||'') + '</td>'
-      + '<td class="name-td"><span title="' + escapeHtml(tooltip) + '">' + escapeHtml(p.name) + '</span></td>'
+      + '<td class="name-td">'
+      +   '<span class="star-btn' + (starred ? ' starred' : '') + '" title="' + escapeHtml(starTitle) + '" onclick="toggleStar(\'' + safeKey + '\')">' + starGlyph + '</span>'
+      +   '<span title="' + escapeHtml(tooltip) + '">' + escapeHtml(p.name) + '</span>'
+      + '</td>'
       + '<td class="status-td"><span class="status-icon ' + iconClass + '" title="' + escapeHtml(tooltip) + '">' + icon + '</span></td>'
       + dayCells
       + '</tr>';
