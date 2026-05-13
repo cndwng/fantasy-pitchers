@@ -142,86 +142,78 @@
     <span id="sync-status" style="font-size:12px;color:var(--color-text-tertiary);"></span>
   </div>
 
-  <div class="tab-bar">
-    <button class="tab active" onclick="switchTab('view')">This week</button>
-    <button class="tab" onclick="switchTab('setup')">Setup</button>
-  </div>
-
-  <!-- VIEW TAB -->
-  <div id="view-tab">
-    <div class="summary-cards" id="summary-cards"></div>
-    <div class="filter-bar">
-      <span style="font-size:12px;color:var(--color-text-secondary);">Filter:</span>
-      <button class="filter-btn active" id="f-all" onclick="clearFilters()">All</button>
-      <button class="filter-btn" id="f-roster" onclick="toggleSource('roster')">Roster</button>
-      <button class="filter-btn" id="f-available" onclick="toggleSource('available')">Available</button>
-      <button class="filter-btn" id="f-2start" onclick="toggle2Start()">2-start only</button>
-      <span style="margin-left:auto;font-size:12px;color:var(--color-text-secondary);">Days:</span>
-      <button class="filter-btn active" id="week-toggle" onclick="toggleWeek()">This week</button>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-      <input type="text" id="search-input" placeholder="Search pitchers…" oninput="state.search=this.value;render()" style="margin-bottom:0;flex:1;">
-      <button class="action" onclick="exportCSV()" style="padding:3px 10px;font-size:11px;white-space:nowrap;">Export CSV</button>
-    </div>
-    <div class="grid"><div id="pitcher-table-container"></div></div>
-  </div>
-
-  <!-- SETUP TAB -->
-  <div id="setup-tab" style="display:none;">
-
+  <!-- AUTH GATE -->
+  <div id="auth-gate" style="display:none;">
     <div class="edit-panel section">
-      <div class="section-label">Probable pitchers — paste Fangraphs HTML</div>
-      <textarea id="html-input" placeholder="Paste the full HTML from the Fangraphs probable pitchers page here..." rows="5"></textarea>
-      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-        <button class="action primary" onclick="parseHTML()">Parse HTML</button>
-        <button class="action" onclick="loadSampleData()">Load sample data</button>
-        <button class="action" onclick="clearPitchers()">Clear pitchers</button>
-      </div>
-      <div id="parse-status" style="margin-top:8px;font-size:12px;color:var(--color-text-secondary);"></div>
+      <h2 style="font-size:16px;font-weight:500;margin-bottom:8px;">Sign in</h2>
+      <p class="hint" style="margin-bottom:12px;">Connect your Yahoo Fantasy account to load your MLB roster automatically.</p>
+      <button class="action primary" onclick="connectYahoo()">Connect Yahoo</button>
+      <p id="auth-error" class="hint" style="color:var(--color-text-danger,#a32d2d);margin-top:10px;"></p>
+    </div>
+  </div>
+
+  <!-- LEAGUE PICKER -->
+  <div id="picker-gate" style="display:none;">
+    <div class="edit-panel section">
+      <h2 style="font-size:16px;font-weight:500;margin-bottom:8px;">Pick your team</h2>
+      <p class="hint" style="margin-bottom:12px;">Choose which fantasy team's roster this tool should track.</p>
+      <div id="team-options"></div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app-main" style="display:none;">
+    <div class="tab-bar">
+      <button class="tab active" onclick="switchTab('view')">This week</button>
+      <button class="tab" onclick="switchTab('account')">Account</button>
     </div>
 
-    <div class="edit-panel section" id="panel-roster">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <div class="section-label" style="margin-bottom:0;">My roster — one pitcher name per line</div>
-        <button class="action" onclick="copyList('roster')" style="padding:3px 10px;font-size:11px;" id="copy-btn-roster">Copy</button>
+    <!-- VIEW TAB -->
+    <div id="view-tab">
+      <div class="summary-cards" id="summary-cards"></div>
+      <div class="filter-bar">
+        <span style="font-size:12px;color:var(--color-text-secondary);">Filter:</span>
+        <button class="filter-btn active" id="f-all" onclick="clearFilters()">All</button>
+        <button class="filter-btn" id="f-roster" onclick="toggleSource('roster')">Roster</button>
+        <button class="filter-btn" id="f-available" onclick="toggleSource('available')">Available</button>
+        <button class="filter-btn" id="f-2start" onclick="toggle2Start()">2-start only</button>
+        <span style="margin-left:auto;font-size:12px;color:var(--color-text-secondary);">Days:</span>
+        <button class="filter-btn active" id="week-toggle" onclick="toggleWeek()">This week</button>
       </div>
-      <textarea id="roster-input" placeholder="e.g.&#10;Corbin Burnes&#10;Gerrit Cole&#10;Spencer Strider" rows="6" oninput="markDraft('roster')"></textarea>
-      <div class="draft-bar" id="draft-bar-roster"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <input type="text" id="search-input" placeholder="Search pitchers…" oninput="state.search=this.value;render()" style="margin-bottom:0;flex:1;">
+        <button class="action" onclick="exportCSV()" style="padding:3px 10px;font-size:11px;white-space:nowrap;">Export CSV</button>
+      </div>
+      <div class="grid"><div id="pitcher-table-container"></div></div>
     </div>
 
-    <div class="edit-panel section" id="panel-available">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <div class="section-label" style="margin-bottom:0;">Available pitchers (free agents / waiver)</div>
-        <button class="action" onclick="copyList('available')" style="padding:3px 10px;font-size:11px;" id="copy-btn-available">Copy</button>
+    <!-- ACCOUNT TAB -->
+    <div id="account-tab" style="display:none;">
+      <div class="edit-panel section">
+        <div class="section-label">Signed in</div>
+        <p id="account-info" style="font-size:13px;margin-bottom:8px;"></p>
+        <p id="account-selection" style="font-size:13px;color:var(--color-text-secondary);margin-bottom:12px;"></p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="action primary" onclick="manualSync()">Refresh from Yahoo</button>
+          <button class="action" onclick="changeTeam()">Change team</button>
+          <button class="action" onclick="signOut()">Sign out</button>
+        </div>
+        <p id="sync-detail" class="hint" style="margin-top:10px;"></p>
       </div>
-      <textarea id="available-input" placeholder="e.g.&#10;Kyle Freeland&#10;Robert Garcia&#10;MacKenzie Gore" rows="6" oninput="markDraft('available')"></textarea>
-      <div class="draft-bar" id="draft-bar-available"></div>
-      <p class="hint">Clicking a pitcher's name or icon in the grid toggles available and saves immediately — no draft needed for that.</p>
     </div>
-
   </div>
 </div>
 
 <script>
-const BIN_ID  = '69dd72caaaba882197f6a46a';
-const BIN_KEY = '$2a$10$qE2QUXIOJFM7tj2y28b.eeoORh2uQbua4gDQwUIdWrZD/lwQyZYqi';
-const BIN_URL = 'https://api.jsonbin.io/v3/b/' + BIN_ID;
-const HEADERS = { 'Content-Type': 'application/json', 'X-Access-Key': BIN_KEY };
-
 let state = {
   pitchers: [], colDates: [],
   roster: new Set(), available: new Set(),
   showRoster: false, showAvailable: false, twoStart: false,
   weekOnly: false, search: '', focusDate: null,
-  draft: { roster: null, available: null },
-  syncing: false
+  user: null, selection: null
 };
 
 function norm(n) { return n.trim().toLowerCase(); }
-function linesFromSet(s) { return [...s].sort().join('\n'); }
-function setFromText(t) { return new Set(t.split('\n').map(n => n.trim()).filter(Boolean).map(norm)); }
-
-// ── Sync status ───────────────────────────────────────────────────────────────
 
 function setSyncStatus(msg, isError) {
   let el = document.getElementById('sync-status');
@@ -230,137 +222,178 @@ function setSyncStatus(msg, isError) {
   el.style.color = isError ? 'var(--color-text-danger, #a32d2d)' : 'var(--color-text-tertiary)';
 }
 
-// ── Remote storage ────────────────────────────────────────────────────────────
+// ── API client ────────────────────────────────────────────────────────────────
 
-async function remoteLoad() {
+async function api(path, opts) {
+  opts = opts || {};
+  const init = { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts };
+  if (init.body && typeof init.body !== 'string') init.body = JSON.stringify(init.body);
+  const r = await fetch(path, init);
+  if (r.status === 401) {
+    state.user = null; state.selection = null;
+    showAuthGate();
+    throw new Error('unauthenticated');
+  }
+  if (r.status === 204) return null;
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || (path + ' ' + r.status));
+  return data;
+}
+
+// ── Auth / gating ─────────────────────────────────────────────────────────────
+
+function connectYahoo() { window.location.href = '/api/auth/yahoo/start'; }
+
+async function signOut() {
+  await api('/api/auth/signout', { method: 'POST' });
+  state.user = null; state.selection = null;
+  showAuthGate();
+}
+
+function showAuthGate() {
+  document.getElementById('auth-gate').style.display = '';
+  document.getElementById('picker-gate').style.display = 'none';
+  document.getElementById('app-main').style.display = 'none';
+  const err = new URLSearchParams(location.search).get('auth_error');
+  if (err) document.getElementById('auth-error').textContent = 'Sign-in failed: ' + err;
+}
+
+function showPicker() {
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('picker-gate').style.display = '';
+  document.getElementById('app-main').style.display = 'none';
+  loadTeams();
+}
+
+function showMain() {
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('picker-gate').style.display = 'none';
+  document.getElementById('app-main').style.display = '';
+}
+
+// ── League / team picker ──────────────────────────────────────────────────────
+
+async function loadTeams() {
+  const container = document.getElementById('team-options');
+  container.innerHTML = '<p class="hint">Loading your Yahoo leagues…</p>';
   try {
-    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Access-Key': BIN_KEY } });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
-    return json.record;
-  } catch(e) { return null; }
+    const teams = await api('/api/yahoo/leagues');
+    if (!teams.length) {
+      container.innerHTML = '<p class="hint">No MLB fantasy teams found on your Yahoo account.</p>';
+      return;
+    }
+    container.innerHTML = teams.map((t, i) =>
+      '<button class="action" style="display:block;width:100%;text-align:left;margin-bottom:6px;" data-i="' + i + '">'
+      + '<strong>' + escapeHtml(t.team_name) + '</strong>'
+      + '<span style="color:var(--color-text-tertiary);font-size:11px;display:block;">' + escapeHtml(t.league_key) + '</span>'
+      + '</button>'
+    ).join('');
+    container.querySelectorAll('button[data-i]').forEach(btn => {
+      btn.addEventListener('click', () => selectTeam(teams[Number(btn.dataset.i)]));
+    });
+  } catch (e) {
+    container.innerHTML = '<p class="hint" style="color:var(--color-text-danger,#a32d2d);">Could not load leagues: ' + escapeHtml(e.message) + '</p>';
+  }
 }
 
-async function remoteSave(data) {
+async function selectTeam(team) {
+  setSyncStatus('Saving selection…');
+  await api('/api/yahoo/select', { method: 'POST', body: team });
+  state.selection = { league_key: team.league_key, team_key: team.team_key, league_name: team.league_name, team_name: team.team_name };
+  setSyncStatus('Syncing from Yahoo…');
   try {
-    const res = await fetch(BIN_URL, { method: 'PUT', headers: HEADERS, body: JSON.stringify(data) });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    return true;
-  } catch(e) { return false; }
+    await api('/api/yahoo/sync', { method: 'POST' });
+  } catch (e) {
+    setSyncStatus('Initial sync failed — try Refresh later', true);
+  }
+  await loadAll();
+  showMain();
+  render();
+  setSyncStatus('');
 }
 
-function toRecord() {
-  return {
-    pitchers: state.pitchers,
-    colDates: state.colDates,
-    roster:   [...state.roster],
-    available:[...state.available]
-  };
+function changeTeam() { showPicker(); }
+
+// ── Account tab ───────────────────────────────────────────────────────────────
+
+async function manualSync() {
+  setSyncStatus('Syncing from Yahoo…');
+  document.getElementById('sync-detail').textContent = '';
+  try {
+    const r = await api('/api/yahoo/sync', { method: 'POST' });
+    document.getElementById('sync-detail').textContent =
+      'Synced ' + r.roster + ' roster, ' + r.available + ' available at ' + new Date(r.synced_at).toLocaleTimeString();
+    await loadAll();
+    render();
+    setSyncStatus('');
+  } catch (e) {
+    setSyncStatus('Sync failed', true);
+    document.getElementById('sync-detail').textContent = e.message;
+  }
 }
 
-async function pushState() {
-  setSyncStatus('Saving…');
-  // Also write to localStorage as fallback
-  localStorage.setItem('fbp_data', JSON.stringify(toRecord()));
-  const ok = await remoteSave(toRecord());
-  setSyncStatus(ok ? 'Saved' : 'Saved locally (sync failed)');
+function renderAccount() {
+  const info = document.getElementById('account-info');
+  if (state.user) {
+    info.textContent = (state.user.display_name || state.user.email || 'Yahoo user');
+  }
+  const sel = document.getElementById('account-selection');
+  if (state.selection) {
+    sel.textContent = 'Tracking: ' + (state.selection.team_name || state.selection.team_key);
+  } else {
+    sel.textContent = 'No team selected.';
+  }
+}
+
+// ── Data load ────────────────────────────────────────────────────────────────
+
+async function loadAll() {
+  const data = await api('/api/pitchers');
+  state.pitchers  = data.pitchers  || [];
+  state.colDates  = (data.colDates || []).map(c => ({ ...c, day: (c.day || '').replace(/\d+$/, '') }));
+  state.roster    = new Set(data.roster    || []);
+  state.available = new Set(data.available || []);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
   setSyncStatus('Loading…');
-  let data = await remoteLoad();
-  if(data) {
-    setSyncStatus('');
-  } else {
-    // Fall back to localStorage
-    setSyncStatus('Offline — using local data');
-    try { const d = localStorage.getItem('fbp_data'); if(d) data = JSON.parse(d); } catch(e){}
+  try {
+    const me = await api('/api/me');
+    state.user = me.user;
+    state.selection = me.selection;
+  } catch (e) {
+    if (e.message === 'unauthenticated') return;
+    setSyncStatus('Could not load session', true);
+    return;
   }
-  if(data) {
-    state.pitchers  = data.pitchers  || [];
-    state.colDates  = (data.colDates || []).map(c => ({ ...c, day: (c.day || '').replace(/\d+$/, '') }));
-    state.roster    = new Set(data.roster    || []);
-    state.available = new Set(data.available || []);
+  if (!state.selection) { showPicker(); setSyncStatus(''); return; }
+  try {
+    await loadAll();
+  } catch (e) {
+    setSyncStatus('Could not load data: ' + e.message, true);
+    return;
   }
-  document.getElementById('roster-input').value    = linesFromSet(state.roster);
-  document.getElementById('available-input').value = linesFromSet(state.available);
-  renderDraftBar('roster');
-  renderDraftBar('available');
+  showMain();
   render();
+  renderAccount();
+  setSyncStatus('');
 }
 
-// ── Draft / save ─────────────────────────────────────────────────────────────
-
-function markDraft(which) {
-  state.draft[which] = document.getElementById(which === 'roster' ? 'roster-input' : 'available-input').value;
-  document.getElementById('panel-' + which).classList.add('has-changes');
-  renderDraftBar(which);
-}
-
-async function saveDraft(which) {
-  if(state.draft[which] === null) return;
-  const s = setFromText(state.draft[which]);
-  if(which === 'roster') state.roster = s;
-  else state.available = s;
-  state.draft[which] = null;
-  document.getElementById('panel-' + which).classList.remove('has-changes');
-  renderDraftBar(which);
-  render();
-  await pushState();
-}
-
-function discardDraft(which) {
-  const current = which === 'roster' ? state.roster : state.available;
-  document.getElementById(which === 'roster' ? 'roster-input' : 'available-input').value = linesFromSet(current);
-  state.draft[which] = null;
-  document.getElementById('panel-' + which).classList.remove('has-changes');
-  renderDraftBar(which);
-}
-
-function renderDraftBar(which) {
-  const bar = document.getElementById('draft-bar-' + which);
-  if(state.draft[which] !== null) {
-    bar.innerHTML = '<span class="draft-msg">Unsaved changes</span>'
-      + '<button class="action primary" onclick="saveDraft(\'' + which + '\')" style="padding:4px 12px;font-size:12px;">Save</button>'
-      + '<button class="action" onclick="discardDraft(\'' + which + '\')" style="padding:4px 12px;font-size:12px;">Discard</button>';
-  } else {
-    bar.innerHTML = '<span class="saved-msg">Saved</span>';
-  }
-}
-
-// ── Grid toggle (immediate, no draft) ────────────────────────────────────────
-
-function copyList(which) {
-  const s = which === 'roster' ? state.roster : state.available;
-  const text = [...s].sort().join('\n');
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.getElementById('copy-btn-' + which);
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
-  });
-}
-
-async function toggleAvailable(name) {
-  const k = norm(name);
-  const current = state.roster.has(k) ? 'roster' : state.available.has(k) ? 'available' : 'neither';
-  state.roster.delete(k);
-  state.available.delete(k);
-  if(current === 'neither')        state.available.add(k);
-  else if(current === 'available') state.roster.add(k);
-  if(state.draft.roster === null)    document.getElementById('roster-input').value    = linesFromSet(state.roster);
-  if(state.draft.available === null) document.getElementById('available-input').value = linesFromSet(state.available);
-  render();
-  await pushState();
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ── Navigation / filters ─────────────────────────────────────────────────────
 
 function switchTab(tab) {
-  document.getElementById('view-tab').style.display  = tab === 'view'  ? '' : 'none';
-  document.getElementById('setup-tab').style.display = tab === 'setup' ? '' : 'none';
-  document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='view')||(i===1&&tab==='setup')));
+  document.getElementById('view-tab').style.display    = tab === 'view'    ? '' : 'none';
+  document.getElementById('account-tab').style.display = tab === 'account' ? '' : 'none';
+  document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='view')||(i===1&&tab==='account')));
+  if (tab === 'account') renderAccount();
 }
 
 function syncAllBtn() {
@@ -409,91 +442,6 @@ function toggleWeek() {
   render();
 }
 
-// ── Parsing ───────────────────────────────────────────────────────────────────
-
-function parseHTML() {
-  const raw = document.getElementById('html-input').value.trim();
-  if(!raw) { document.getElementById('parse-status').textContent = 'Paste HTML first.'; return; }
-  const doc = new DOMParser().parseFromString(raw, 'text/html');
-  let found = false;
-
-  for(const table of doc.querySelectorAll('table')) {
-    let dateCols = [];
-    for(const row of table.querySelectorAll('tbody tr')) {
-      const ths = [...row.querySelectorAll('th')];
-      if(ths.length < 4) continue;
-      const candidates = [];
-      ths.forEach((th, i) => {
-        if(i === 0) return;
-        const dateMatch = th.innerHTML.match(/(\d+\/\d+)/);
-        const dayMatch  = th.textContent.match(/^([A-Za-z]+)/);
-        if(dateMatch) candidates.push({ idx: i, date: dateMatch[1], day: dayMatch ? dayMatch[1] : '' });
-      });
-      if(candidates.length >= 5) { dateCols = candidates; break; }
-    }
-    if(dateCols.length < 3) continue;
-
-    const pitcherMap = {};
-    for(const row of table.querySelectorAll('tbody tr')) {
-      const cells = [...row.querySelectorAll('td')];
-      if(cells.length < 2) continue;
-      const teamCell = cells.find(c => c.getAttribute('data-stat') === 'Team');
-      if(!teamCell) continue;
-      const team = teamCell.textContent.trim();
-      dateCols.forEach(function(col) {
-        const cell = cells[col.idx];
-        if(!cell) return;
-        const anchor = cell.querySelector('a');
-        if(!anchor) return;
-        const name = anchor.textContent.trim().replace(/\s*\([LRS]\)\s*$/, '');
-        if(!name || name.length < 3) return;
-        const opp = cell.childNodes[0] ? cell.childNodes[0].textContent.trim() : '';
-        const key = norm(name);
-        if(!pitcherMap[key]) pitcherMap[key] = { name, team, schedule: {} };
-        pitcherMap[key].schedule[col.date] = opp || '?';
-      });
-    }
-    if(!Object.keys(pitcherMap).length) continue;
-
-    state.colDates = dateCols.map(c => ({ date: c.date, day: c.day }));
-    state.pitchers = Object.values(pitcherMap);
-    document.getElementById('parse-status').textContent = 'Parsed ' + state.pitchers.length + ' pitchers across ' + state.colDates.length + ' days. Saving…';
-    found = true;
-    render();
-    pushState().then(() => { document.getElementById('parse-status').textContent = 'Parsed ' + state.pitchers.length + ' pitchers across ' + state.colDates.length + ' days.'; });
-    break;
-  }
-  if(!found) document.getElementById('parse-status').textContent = 'Could not parse — check that you pasted the full table HTML.';
-}
-
-async function clearPitchers() {
-  state.pitchers = []; state.colDates = [];
-  document.getElementById('parse-status').textContent = 'Cleared.';
-  render();
-  await pushState();
-}
-
-async function loadSampleData() {
-  state.colDates = [{day:'Mon',date:'4/14'},{day:'Tue',date:'4/15'},{day:'Wed',date:'4/16'},{day:'Thu',date:'4/17'},{day:'Fri',date:'4/18'},{day:'Sat',date:'4/19'},{day:'Sun',date:'4/20'}];
-  state.pitchers = [
-    { name: 'Dean Kremer',    team: 'BAL', schedule: { '4/14': 'ARI' } },
-    { name: 'Trevor Rogers',  team: 'BAL', schedule: { '4/15': 'ARI', '4/20': '@ CLE' } },
-    { name: 'Kyle Bradish',   team: 'BAL', schedule: { '4/16': 'ARI', '4/18': '@ KCR' } },
-    { name: 'Shane Baz',      team: 'BAL', schedule: { '4/17': '@ CLE', '4/19': '@ KCR' } },
-    { name: 'Gerrit Cole',    team: 'NYY', schedule: { '4/14': 'BOS', '4/19': 'TB' } },
-    { name: 'MacKenzie Gore', team: 'TEX', schedule: { '4/14': 'ATL', '4/18': 'PHI' } },
-    { name: 'Logan Webb',     team: 'SF',  schedule: { '4/15': 'COL', '4/20': 'LAD' } },
-    { name: 'Freddy Peralta', team: 'MIL', schedule: { '4/16': 'PIT', '4/19': 'CHC' } },
-    { name: 'Robert Garcia',  team: 'TEX', schedule: { '4/15': 'SEA', '4/18': 'MIN' } },
-    { name: 'Nick Pivetta',   team: 'BOS', schedule: { '4/16': 'NYY', '4/19': 'TOR' } },
-    { name: 'Zac Gallen',     team: 'ARI', schedule: { '4/17': 'SF'  } },
-  ];
-  localStorage.setItem('fbp_data', JSON.stringify(toRecord()));
-  document.getElementById('parse-status').textContent = 'Sample data loaded.';
-  render();
-  await pushState();
-}
-
 // ── Render ────────────────────────────────────────────────────────────────────
 
 function startsCount(p, limitCols) {
@@ -506,9 +454,9 @@ function startsCountWeek(p) {
 }
 
 function getStatus(p) {
-  const k = norm(p.name);
-  if(state.roster.has(k))    return 'roster';
-  if(state.available.has(k)) return 'available';
+  const k = p.name_norm;
+  if(k && state.roster.has(k))    return 'roster';
+  if(k && state.available.has(k)) return 'available';
   return 'neither';
 }
 
@@ -587,7 +535,7 @@ function renderTable() {
 
   const container = document.getElementById('pitcher-table-container');
   if(pitchers.length === 0) {
-    container.innerHTML = '<div class="empty-state">' + (state.pitchers.length === 0 ? 'No pitcher data yet — go to Setup and paste the Fangraphs HTML or load sample data.' : 'No pitchers match this filter.') + '</div>';
+    container.innerHTML = '<div class="empty-state">' + (state.pitchers.length === 0 ? 'No pitcher data yet — the daily schedule refresh has not run.' : 'No pitchers match this filter.') + '</div>';
     return;
   }
 
@@ -614,17 +562,16 @@ function renderTable() {
       : status === 'available'
       ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M3 14a5 5 0 0 1 10 0"/></svg>'
       : '<span style="font-size:11px;line-height:1">+</span>';
-    const tooltip = status === 'roster' ? 'On roster — click to clear' : status === 'available' ? 'Available — click to mark rostered' : 'Click to mark available';
-    const safeN = p.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const tooltip = status === 'roster' ? 'On your roster' : status === 'available' ? 'Free agent in your league' : '';
     const dayCells = displayCols.map(c => {
       const date = typeof c === 'string' ? c : c.date;
       const opp = p.schedule[date];
       return '<td>' + (opp ? '<div class="start-dot has-start">' + opp + '</div>' : '<span style="color:var(--color-text-tertiary)">·</span>') + '</td>';
     }).join('');
     return '<tr>'
-      + '<td class="team-td">' + (p.team||'') + '</td>'
-      + '<td class="name-td"><span class="name-toggle" onclick="toggleAvailable(\'' + safeN + '\')" title="' + tooltip + '">' + p.name + '</span></td>'
-      + '<td class="status-td"><span class="status-icon ' + iconClass + '" onclick="toggleAvailable(\'' + safeN + '\')" title="' + tooltip + '">' + icon + '</span></td>'
+      + '<td class="team-td">' + escapeHtml(p.team||'') + '</td>'
+      + '<td class="name-td"><span title="' + escapeHtml(tooltip) + '">' + escapeHtml(p.name) + '</span></td>'
+      + '<td class="status-td"><span class="status-icon ' + iconClass + '" title="' + escapeHtml(tooltip) + '">' + icon + '</span></td>'
       + dayCells
       + '</tr>';
   }).join('');
@@ -635,8 +582,7 @@ function renderTable() {
     + '<th class="name-col">Pitcher</th>'
     + '<th class="status-col"></th>'
     + headerDays
-    + '</tr></thead><tbody>' + rows + '</tbody></table>'
-    + '<p style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;">Click a pitcher\'s name or status icon to toggle available — saves immediately.</p>';
+    + '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
 window.addEventListener('scroll', function() {

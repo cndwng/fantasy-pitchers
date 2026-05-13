@@ -1,0 +1,12 @@
+{
+  "name": "fantasy-pitchers",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "jose": "^5.9.0",
+    "node-fetch": "^3.3.2",
+    "node-html-parser": "^6.1.13"
+  }
+}
