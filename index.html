@@ -147,16 +147,6 @@
     <span id="sync-status" style="font-size:12px;color:var(--color-text-tertiary);"></span>
   </div>
 
-  <!-- AUTH GATE -->
-  <div id="auth-gate" style="display:none;">
-    <div class="edit-panel section">
-      <h2 style="font-size:16px;font-weight:500;margin-bottom:8px;">Sign in</h2>
-      <p class="hint" style="margin-bottom:12px;">Connect your Yahoo Fantasy account to load your MLB roster automatically.</p>
-      <button class="action primary" onclick="connectYahoo()">Connect Yahoo</button>
-      <p id="auth-error" class="hint" style="color:var(--color-text-danger,#a32d2d);margin-top:10px;"></p>
-    </div>
-  </div>
-
   <!-- LEAGUE PICKER -->
   <div id="picker-gate" style="display:none;">
     <div class="edit-panel section">
@@ -169,8 +159,9 @@
   <!-- MAIN APP -->
   <div id="app-main" style="display:none;">
     <div class="tab-bar">
-      <button class="tab active" onclick="switchTab('view')">This week</button>
-      <button class="tab" onclick="switchTab('account')">Account</button>
+      <button class="tab active" id="tab-view" onclick="switchTab('view')">This week</button>
+      <button class="tab" id="tab-setup" onclick="switchTab('setup')">Setup</button>
+      <button class="tab" id="tab-account" onclick="switchTab('account')" style="display:none;">Account</button>
     </div>
 
     <!-- VIEW TAB -->
@@ -193,7 +184,40 @@
       <div class="grid"><div id="pitcher-table-container"></div></div>
     </div>
 
-    <!-- ACCOUNT TAB -->
+    <!-- SETUP TAB (anonymous mode) -->
+    <div id="setup-tab" style="display:none;">
+      <div class="edit-panel section" style="background:var(--color-background-info);border-color:var(--color-border-info);">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:200px;">
+            <div style="font-weight:500;color:var(--color-text-info);margin-bottom:4px;">Connect Yahoo for auto-roster</div>
+            <p class="hint" style="color:var(--color-text-info);opacity:0.85;">Sign in with your Yahoo Fantasy account and your MLB roster + league free agents will load automatically. Your starred pitchers move to your account too.</p>
+          </div>
+          <button class="action primary" onclick="connectYahoo()">Connect Yahoo</button>
+        </div>
+        <p id="auth-error" class="hint" style="color:var(--color-text-danger,#a32d2d);margin-top:10px;"></p>
+      </div>
+
+      <div class="edit-panel section" id="panel-roster">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div class="section-label" style="margin-bottom:0;">My roster — one pitcher name per line</div>
+          <button class="action" onclick="copyList('roster')" style="padding:3px 10px;font-size:11px;" id="copy-btn-roster">Copy</button>
+        </div>
+        <textarea id="roster-input" placeholder="e.g.&#10;Corbin Burnes&#10;Gerrit Cole&#10;Spencer Strider" rows="6" oninput="markDraft('roster')"></textarea>
+        <div class="draft-bar" id="draft-bar-roster"></div>
+        <p class="hint">Stored in this browser only. Sign in with Yahoo above to sync across devices.</p>
+      </div>
+
+      <div class="edit-panel section" id="panel-available">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div class="section-label" style="margin-bottom:0;">Available pitchers (free agents / waiver)</div>
+          <button class="action" onclick="copyList('available')" style="padding:3px 10px;font-size:11px;" id="copy-btn-available">Copy</button>
+        </div>
+        <textarea id="available-input" placeholder="e.g.&#10;Kyle Freeland&#10;Robert Garcia&#10;MacKenzie Gore" rows="6" oninput="markDraft('available')"></textarea>
+        <div class="draft-bar" id="draft-bar-available"></div>
+      </div>
+    </div>
+
+    <!-- ACCOUNT TAB (logged-in mode) -->
     <div id="account-tab" style="display:none;">
       <div class="edit-panel section">
         <div class="section-label">Signed in</div>
@@ -212,14 +236,30 @@
 
 <script>
 let state = {
+  mode: 'anonymous',
   pitchers: [], colDates: [],
   roster: new Set(), available: new Set(), starred: new Set(),
   showRoster: false, showAvailable: false, showStarred: false, twoStart: false,
   weekOnly: false, search: '', focusDate: null,
-  user: null, selection: null
+  user: null, selection: null,
+  draft: { roster: null, available: null }
 };
 
+const LS_ROSTER    = 'fbp_local_roster';
+const LS_AVAILABLE = 'fbp_local_available';
+const LS_STARRED   = 'fbp_local_starred';
+
 function norm(n) { return n.trim().toLowerCase(); }
+function linesFromSet(s) { return [...s].sort().join('\n'); }
+function setFromText(t) { return new Set(t.split('\n').map(n => n.trim()).filter(Boolean).map(norm)); }
+
+function loadLocalSet(key) {
+  try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')); }
+  catch { return new Set(); }
+}
+function saveLocalSet(key, s) {
+  try { localStorage.setItem(key, JSON.stringify([...s])); } catch {}
+}
 
 function setSyncStatus(msg, isError) {
   let el = document.getElementById('sync-status');
@@ -235,11 +275,7 @@ async function api(path, opts) {
   const init = { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts };
   if (init.body && typeof init.body !== 'string') init.body = JSON.stringify(init.body);
   const r = await fetch(path, init);
-  if (r.status === 401) {
-    state.user = null; state.selection = null;
-    showAuthGate();
-    throw new Error('unauthenticated');
-  }
+  if (r.status === 401) { const err = new Error('unauthenticated'); err.status = 401; throw err; }
   if (r.status === 204) return null;
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || (path + ' ' + r.status));
@@ -251,30 +287,33 @@ async function api(path, opts) {
 function connectYahoo() { window.location.href = '/api/auth/yahoo/start'; }
 
 async function signOut() {
-  await api('/api/auth/signout', { method: 'POST' });
-  state.user = null; state.selection = null;
-  showAuthGate();
-}
-
-function showAuthGate() {
-  document.getElementById('auth-gate').style.display = '';
-  document.getElementById('picker-gate').style.display = 'none';
-  document.getElementById('app-main').style.display = 'none';
-  const err = new URLSearchParams(location.search).get('auth_error');
-  if (err) document.getElementById('auth-error').textContent = 'Sign-in failed: ' + err;
+  try { await api('/api/auth/signout', { method: 'POST' }); } catch {}
+  location.reload();
 }
 
 function showPicker() {
-  document.getElementById('auth-gate').style.display = 'none';
   document.getElementById('picker-gate').style.display = '';
   document.getElementById('app-main').style.display = 'none';
   loadTeams();
 }
 
 function showMain() {
-  document.getElementById('auth-gate').style.display = 'none';
   document.getElementById('picker-gate').style.display = 'none';
   document.getElementById('app-main').style.display = '';
+  const setupTab   = document.getElementById('tab-setup');
+  const accountTab = document.getElementById('tab-account');
+  if (state.mode === 'logged_in') {
+    setupTab.style.display = 'none';
+    accountTab.style.display = '';
+  } else {
+    setupTab.style.display = '';
+    accountTab.style.display = 'none';
+  }
+  const err = new URLSearchParams(location.search).get('auth_error');
+  if (err) {
+    const el = document.getElementById('auth-error');
+    if (el) el.textContent = 'Sign-in failed: ' + err;
+  }
 }
 
 // ── League / team picker ──────────────────────────────────────────────────────
@@ -312,6 +351,7 @@ async function selectTeam(team) {
   } catch (e) {
     setSyncStatus('Initial sync failed — try Refresh later', true);
   }
+  await mergeLocalStarsToServer();
   await loadAll();
   showMain();
   render();
@@ -357,9 +397,15 @@ async function loadAll() {
   const data = await api('/api/pitchers');
   state.pitchers  = data.pitchers  || [];
   state.colDates  = (data.colDates || []).map(c => ({ ...c, day: (c.day || '').replace(/\d+$/, '') }));
-  state.roster    = new Set(data.roster    || []);
-  state.available = new Set(data.available || []);
-  state.starred   = new Set(data.starred   || []);
+  if (state.mode === 'logged_in') {
+    state.roster    = new Set(data.roster    || []);
+    state.available = new Set(data.available || []);
+    state.starred   = new Set(data.starred   || []);
+  } else {
+    state.roster    = loadLocalSet(LS_ROSTER);
+    state.available = loadLocalSet(LS_AVAILABLE);
+    state.starred   = loadLocalSet(LS_STARRED);
+  }
 }
 
 async function toggleStar(nameNorm) {
@@ -368,6 +414,11 @@ async function toggleStar(nameNorm) {
   if (wasStarred) state.starred.delete(nameNorm);
   else state.starred.add(nameNorm);
   render();
+
+  if (state.mode === 'anonymous') {
+    saveLocalSet(LS_STARRED, state.starred);
+    return;
+  }
   try {
     const r = await api('/api/stars', {
       method: 'POST',
@@ -386,29 +437,114 @@ async function toggleStar(nameNorm) {
   }
 }
 
+// ── Draft roster / available (anonymous mode) ────────────────────────────────
+
+function markDraft(which) {
+  state.draft[which] = document.getElementById(which === 'roster' ? 'roster-input' : 'available-input').value;
+  document.getElementById('panel-' + which).classList.add('has-changes');
+  renderDraftBar(which);
+}
+
+function saveDraft(which) {
+  if (state.draft[which] === null) return;
+  const s = setFromText(state.draft[which]);
+  if (which === 'roster') { state.roster = s; saveLocalSet(LS_ROSTER, s); }
+  else                    { state.available = s; saveLocalSet(LS_AVAILABLE, s); }
+  state.draft[which] = null;
+  document.getElementById('panel-' + which).classList.remove('has-changes');
+  renderDraftBar(which);
+  render();
+}
+
+function discardDraft(which) {
+  const current = which === 'roster' ? state.roster : state.available;
+  document.getElementById(which === 'roster' ? 'roster-input' : 'available-input').value = linesFromSet(current);
+  state.draft[which] = null;
+  document.getElementById('panel-' + which).classList.remove('has-changes');
+  renderDraftBar(which);
+}
+
+function renderDraftBar(which) {
+  const bar = document.getElementById('draft-bar-' + which);
+  if (!bar) return;
+  if (state.draft[which] !== null) {
+    bar.innerHTML = '<span class="draft-msg">Unsaved changes</span>'
+      + '<button class="action primary" onclick="saveDraft(\'' + which + '\')" style="padding:4px 12px;font-size:12px;">Save</button>'
+      + '<button class="action" onclick="discardDraft(\'' + which + '\')" style="padding:4px 12px;font-size:12px;">Discard</button>';
+  } else {
+    bar.innerHTML = '<span class="saved-msg">Saved locally</span>';
+  }
+}
+
+function copyList(which) {
+  const s = which === 'roster' ? state.roster : state.available;
+  const text = [...s].sort().join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-btn-' + which);
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+  });
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
+
+async function mergeLocalStarsToServer() {
+  const local = loadLocalSet(LS_STARRED);
+  if (!local.size) return;
+  try {
+    await Promise.all([...local].map(n =>
+      api('/api/stars', { method: 'POST', body: { name_norm: n, action: 'add' } })
+    ));
+    localStorage.removeItem(LS_STARRED);
+  } catch (e) {
+    // Non-fatal — user can re-star manually
+    console.warn('Star merge failed:', e);
+  }
+}
 
 async function init() {
   setSyncStatus('Loading…');
+  let me = null;
   try {
-    const me = await api('/api/me');
+    me = await api('/api/me');
+  } catch (e) {
+    if (e.status !== 401) {
+      setSyncStatus('Could not load session', true);
+      // Fall through to anonymous mode
+    }
+  }
+  if (me) {
+    state.mode = 'logged_in';
     state.user = me.user;
     state.selection = me.selection;
-  } catch (e) {
-    if (e.message === 'unauthenticated') return;
-    setSyncStatus('Could not load session', true);
+    if (!state.selection) { showPicker(); setSyncStatus(''); return; }
+    await mergeLocalStarsToServer();
+    try {
+      await loadAll();
+    } catch (e) {
+      setSyncStatus('Could not load data: ' + e.message, true);
+      return;
+    }
+    showMain();
+    render();
+    renderAccount();
+    setSyncStatus('');
     return;
   }
-  if (!state.selection) { showPicker(); setSyncStatus(''); return; }
+  // Anonymous
+  state.mode = 'anonymous';
   try {
     await loadAll();
   } catch (e) {
-    setSyncStatus('Could not load data: ' + e.message, true);
+    setSyncStatus('Could not load pitcher data', true);
     return;
   }
+  document.getElementById('roster-input').value    = linesFromSet(state.roster);
+  document.getElementById('available-input').value = linesFromSet(state.available);
+  renderDraftBar('roster');
+  renderDraftBar('available');
   showMain();
   render();
-  renderAccount();
   setSyncStatus('');
 }
 
@@ -422,8 +558,11 @@ function escapeHtml(s) {
 
 function switchTab(tab) {
   document.getElementById('view-tab').style.display    = tab === 'view'    ? '' : 'none';
+  document.getElementById('setup-tab').style.display   = tab === 'setup'   ? '' : 'none';
   document.getElementById('account-tab').style.display = tab === 'account' ? '' : 'none';
-  document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='view')||(i===1&&tab==='account')));
+  document.getElementById('tab-view').classList.toggle('active',    tab === 'view');
+  document.getElementById('tab-setup').classList.toggle('active',   tab === 'setup');
+  document.getElementById('tab-account').classList.toggle('active', tab === 'account');
   if (tab === 'account') renderAccount();
 }
 
