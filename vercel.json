@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/cron/fetch-pitchers", "schedule": "0 10 * * *" },
+    { "path": "/api/cron/sync-all", "schedule": "30 10 * * *" }
+  ]
+}
